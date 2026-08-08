@@ -39,7 +39,7 @@ export default function Home() {
           alt="Construction site"
           className="absolute inset-0 h-full w-full object-cover opacity-20"
         />
-        <div className="relative mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-24 lg:px-8">
+        <div className="bnb-hero-inner relative mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-24 lg:px-8">
           <h1 className="max-w-3xl font-display text-4xl font-extrabold leading-tight tracking-tight text-white sm:text-5xl lg:text-6xl">
             Construction Opportunities.<br className="hidden sm:block" /> All in One Place.
           </h1>

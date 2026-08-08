@@ -54,7 +54,7 @@ export const Header = () => {
                 <Menu className="h-6 w-6" />
               </button>
             </SheetTrigger>
-            <SheetContent side="right" className="w-72">
+            <SheetContent side="right" className="w-72 overflow-y-auto">
               <SheetTitle className="sr-only">Navigation menu</SheetTitle>
               <SheetDescription className="sr-only">Browse jobs, tenders, or submit a requirement</SheetDescription>
               <div className="mt-6 flex flex-col gap-1">

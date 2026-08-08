@@ -50,6 +50,24 @@ body {
     font-family: "Outfit", "Inter", sans-serif;
 }
 
+/* Landscape phones & short viewports: tighten vertical spacing so nothing feels cramped */
+@media (max-height: 500px) and (orientation: landscape) {
+    header.sticky {
+        position: static;
+    }
+    .bnb-hero-inner {
+        padding-top: 2rem !important;
+        padding-bottom: 2rem !important;
+    }
+    .bnb-hero-inner h1 {
+        font-size: 1.875rem !important;
+        line-height: 2.25rem !important;
+    }
+    .bnb-hero-inner form {
+        margin-top: 1.25rem !important;
+    }
+}
+
 @keyframes fade-in-up {
     from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
