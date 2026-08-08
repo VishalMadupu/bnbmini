@@ -38,6 +38,11 @@ Build BitsNdBricks Phase 1: a lean, clean, mobile-first construction opportunity
 - **P2**: Vendors, Materials, Machinery, Workforce, Knowledge Hub, News, Students Corner, Professional Profiles.
 - **P2**: Saved searches, alerts, sitemap.xml generation, richer structured data for tenders.
 
+## Implemented (2026-08-08 — Iteration 3)
+- Full responsive/cross-browser pass: mobile hamburger menu (Sheet), single-column forms on mobile with 2-col desktop pairings, detail pages reflow (key info before description on mobile), text-based Expired/Open status, break-words on all titles, zero horizontal overflow verified at 320/390/768/1024/1440/1920.
+- Admin: pending-submissions count badge in header; bulk approve/reject of inbox submissions via checkboxes; admin table horizontally scrollable within its container on small screens.
+- Verified: iteration_3 frontend tests 100% pass; a11y warning on mobile Sheet fixed.
+
 ## Next Tasks
 - Add admin auth when moving beyond demo.
 - Generate sitemap + robots for indexing.

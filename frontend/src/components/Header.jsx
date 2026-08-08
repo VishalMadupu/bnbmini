@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { HardHat, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger, SheetClose } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTrigger, SheetClose, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 
 const links = [
   { to: "/jobs", label: "Jobs" },
@@ -55,6 +55,8 @@ export const Header = () => {
               </button>
             </SheetTrigger>
             <SheetContent side="right" className="w-72">
+              <SheetTitle className="sr-only">Navigation menu</SheetTitle>
+              <SheetDescription className="sr-only">Browse jobs, tenders, or submit a requirement</SheetDescription>
               <div className="mt-6 flex flex-col gap-1">
                 {links.map((l) => (
                   <SheetClose asChild key={l.to}>
