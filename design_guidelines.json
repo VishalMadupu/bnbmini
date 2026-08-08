@@ -1,0 +1,108 @@
+{
+  "project_name": "BitsNdBricks",
+  "theme": "Light, Clean & Professional",
+  "typography": {
+    "headings": "font-sans (Outfit, Cabinet Grotesk, or system geometric sans). Should feel structural, heavy, and clean.",
+    "body": "Inter or IBM Plex Sans for a technical, readable feel.",
+    "rules": [
+      "Headings should use tight tracking: tracking-tight",
+      "Body text should have loose line height: leading-relaxed",
+      "No generic centered layouts for content. Left-align lists and cards.",
+      "Hierarchy gap rule: Jump between a heading and subheading must not exceed 2 Tailwind steps. H1 (text-5xl) -> Subtitle (text-xl or text-2xl max)."
+    ]
+  },
+  "colors": {
+    "primary": "#0f172a",
+    "accent": "#ea580c",
+    "background": "#f8fafc",
+    "card_background": "#ffffff",
+    "border": "#e2e8f0",
+    "text_main": "#0f172a",
+    "text_muted": "#475569",
+    "verified_badge": {
+      "bg": "#dcfce7",
+      "text": "#166534"
+    }
+  },
+  "visual_enhancers": {
+    "shadows": "Minimal. Use shadow-sm on cards, and shadow-md on hover. No heavy drop shadows.",
+    "borders": "1px solid borders on cards (border-slate-200). Crisp edges, rounded-md or rounded-lg radius.",
+    "gradients": "Avoid heavy gradients. Use solid colors.",
+    "glassmorphism": "For sticky header, use backdrop-blur-md bg-white/90. DO NOT use completely transparent background.",
+    "hover_effects": "Slight lift (-translate-y-1), subtle shadow (shadow-md), and border color change."
+  },
+  "components": [
+    {
+      "name": "Header",
+      "description": "Sticky top, white background with border-b. Logo on left, nav links and primary CTA on right. Must not have a transparent background."
+    },
+    {
+      "name": "Hero Section",
+      "description": "Large search bar, left-aligned or centered, clear 'Find Jobs' and 'Find Tenders' quick links below search."
+    },
+    {
+      "name": "Job/Tender Card",
+      "description": "Clean white card, 1px border. Shows Title, Company/Org, Location, Last Date, and ID. View button."
+    },
+    {
+      "name": "Verified Source Badge",
+      "description": "Small pill-shaped badge, light green bg with dark green text and a check icon."
+    },
+    {
+      "name": "Search Bar",
+      "description": "Large input field, prominent submit button. Prominent placeholder text. Use Shadcn Input."
+    },
+    {
+      "name": "Filters Sidebar/Top bar",
+      "description": "Simple select dropdowns for State, City, Category. Use Shadcn Select."
+    }
+  ],
+  "grids_and_layouts": {
+    "container": "Max width 1200px (max-w-6xl mx-auto), generous padding px-4 sm:px-6 lg:px-8.",
+    "listings": "CSS Grid: 1 column on mobile, 2 or 3 columns on desktop (grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6).",
+    "details_page": "Two-column layout on desktop: Main content (8 cols) and Sidebar (4 cols) for Apply CTA/Summary.",
+    "spacing": "Use generous spacing (p-6 or p-8 inside cards, gap-6 or gap-8 between elements)."
+  },
+  "motion": {
+    "hover": "Transition transform and shadow on cards. Exclude transforms from universal transitions.",
+    "buttons": "Subtle scale on click (active:scale-95).",
+    "page_transition": "Simple fade-in for lists."
+  },
+  "accessibility": {
+    "contrast": "Ensure text contrast meets APCA/WCAG AA standards. Dark text on light backgrounds.",
+    "focus": "Clear focus rings on inputs and buttons (focus:ring-2 focus:ring-orange-500 focus:outline-none).",
+    "aria": "Use aria-labels on icon buttons and search inputs."
+  },
+  "media": {
+    "images": [
+      {
+        "url": "https://images.unsplash.com/photo-1527335988388-b40ee248d80c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODF8MHwxfHNlYXJjaHwyfHxtb2Rlcm4lMjBjb25zdHJ1Y3Rpb24lMjBzaXRlJTIwYnVpbGRpbmd8ZW58MHx8fHwxNzg2MjEzNDAyfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Hero section background image (if needed). Must be used with a heavy light overlay (bg-white/80) or dark overlay (bg-slate-900/80) to maintain text contrast.",
+        "category": "hero"
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Build a React frontend (.js files) with Tailwind CSS and Shadcn UI primitives.",
+    "Strictly follow the color palette. Industrial Blue (slate-900) for text, Safety Orange (orange-600) for primary CTAs.",
+    "Ensure the application is mobile-responsive. Hide complex filters in a drawer on mobile if necessary.",
+    "Seed realistic sample data for Jobs and Tenders (Indian context, e.g., L&T, NHAI, Shapoorji Pallonji).",
+    "Implement the listing cards with a clean, border-only look (no heavy shadows).",
+    "Ensure navigation matches requirements: Jobs, Tenders, Submit Requirement.",
+    "Create the hidden admin route with simple CRUD for jobs and tenders.",
+    "Add data-testid attributes to all interactive elements."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "You have .js files not .tsx file, so use JSX in .js files.",
+    "Do not use generic centered layouts for everything. Left-align text for readability.",
+    "Create depth with borders, subtle shadows, and layout hierarchy rather than gradients.",
+    "Never apply transition: all. Use specific transitions (e.g., transition-transform, transition-colors).",
+    "Do not center-align the main App container (.App { text-align: center; } is FORBIDDEN).",
+    "Use modern pill-shaped or slightly rounded buttons (rounded-md or rounded-lg).",
+    "Avoid emoji icons. Use Lucide icons.",
+    "Implement micro-animations on hover states.",
+    "Use generous spacing (p-6, p-8, gap-6, gap-8) to avoid cramped designs.",
+    "All interactive and key informational elements MUST include a data-testid attribute.",
+    "DO NOT use complete transparent background in header, overlays, any surface that has content under it."
+  ]
+}
