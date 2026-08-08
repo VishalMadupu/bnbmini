@@ -189,7 +189,7 @@ export default function Submit() {
                     <Field label="Last Date to Apply">
                       <Input data-testid="field-lastdate" type="date" value={form.last_date} onChange={(e) => set("last_date", e.target.value)} />
                     </Field>
-                    <Field label="Applicant Contact" hint="Who should applicants contact or send their details to?">
+                    <Field label="Contact for Applicant" hint="Who should applicants contact or send their details to?">
                       <Input data-testid="field-applicant-contact" placeholder="Phone, email, WhatsApp or other contact for applicants" value={form.applicant_contact} onChange={(e) => set("applicant_contact", e.target.value)} />
                     </Field>
                   </div>

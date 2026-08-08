@@ -102,7 +102,7 @@ export default function JobDetail() {
               </div>
 
               <div className="mt-6 border-t border-slate-100 pt-6">
-                <h3 className="font-display text-base font-semibold text-slate-900">Applicant Contact</h3>
+                <h3 className="font-display text-base font-semibold text-slate-900">Contact for Applicant</h3>
                 <p className="mt-1 text-xs leading-relaxed text-slate-500">Who applicants should reach out to or send their details to.</p>
                 <div className="mt-3 space-y-2 break-words text-sm">
                   {job.applicant_email && (
