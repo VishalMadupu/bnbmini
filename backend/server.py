@@ -404,15 +404,22 @@ async def get_tender(slug: str):
 # ---------------- Meta (filter options) ----------------
 @api_router.get("/meta")
 async def meta():
-    job_states = await db.jobs.distinct("state", {"status": "active"})
-    tender_states = await db.tenders.distinct("state", {"status": "active"})
-    job_cities = await db.jobs.distinct("city", {"status": "active"})
-    tender_cities = await db.tenders.distinct("city", {"status": "active"})
+    async def loc(coll, statuses):
+        docs = await db[coll].find({"status": {"$in": statuses}}, {"state": 1, "city": 1, "_id": 0}).to_list(2000)
+        states = sorted({d["state"] for d in docs if d.get("state")})
+        cities = sorted({d["city"] for d in docs if d.get("city")})
+        by_state = {}
+        for d in docs:
+            s, c = d.get("state"), d.get("city")
+            if s and c:
+                by_state.setdefault(s, set()).add(c)
+        return states, cities, {k: sorted(v) for k, v in by_state.items()}
+
+    j_states, j_cities, j_map = await loc("jobs", ["active"])
+    t_states, t_cities, t_map = await loc("tenders", ["active", "archived"])
     return {
-        "job_states": sorted([s for s in job_states if s]),
-        "tender_states": sorted([s for s in tender_states if s]),
-        "job_cities": sorted([c for c in job_cities if c]),
-        "tender_cities": sorted([c for c in tender_cities if c]),
+        "job_states": j_states, "job_cities": j_cities, "job_cities_by_state": j_map,
+        "tender_states": t_states, "tender_cities": t_cities, "tender_cities_by_state": t_map,
     }
 
 
