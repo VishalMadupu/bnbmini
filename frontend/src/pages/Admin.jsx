@@ -14,6 +14,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 import { api } from "@/lib/api";
 import { INDIAN_STATES, SOURCE_TYPES, VERIFICATION_OPTIONS, STATUS_OPTIONS, COLLAR_TYPES, AUTHORITY_TYPES } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
@@ -242,6 +243,8 @@ export default function Admin() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [submitter, setSubmitter] = useState(null);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [selected, setSelected] = useState(() => new Set());
 
   const logout = () => {
     localStorage.removeItem("bnb_admin_token");
@@ -274,12 +277,25 @@ export default function Admin() {
 
   useEffect(() => { if (token) load(); }, [load, token]);
 
+  const refreshCounts = useCallback(async () => {
+    try {
+      const [j, t] = await Promise.all([
+        api.get("/admin/jobs", { params: { status: "pending" } }),
+        api.get("/admin/tenders", { params: { status: "pending" } }),
+      ]);
+      setPendingCount(j.data.length + t.data.length);
+    } catch (e) { /* ignore */ }
+  }, []);
+
+  useEffect(() => { if (token) refreshCounts(); }, [token, refreshCounts]);
+
   if (!token) return <AdminLogin onLogin={setToken} />;
 
   const patch = async (id, body, rowKind) => {
     await api.patch(`/admin/${rowKind || kind}s/${id}/status`, body);
     toast.success("Updated");
     load();
+    refreshCounts();
   };
 
   const remove = async (id, rowKind) => {
@@ -287,6 +303,22 @@ export default function Admin() {
     await api.delete(`/admin/${rowKind || kind}s/${id}`);
     toast.success("Deleted");
     load();
+    refreshCounts();
+  };
+
+  const toggleSel = (id) => setSelected((prev) => {
+    const n = new Set(prev);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
+  const clearSel = () => setSelected(new Set());
+  const bulkAction = async (body) => {
+    const chosen = items.filter((x) => selected.has(x.id));
+    await Promise.all(chosen.map((x) => api.patch(`/admin/${x._type}s/${x.id}/status`, body)));
+    toast.success(`Updated ${chosen.length} item(s)`);
+    clearSel();
+    load();
+    refreshCounts();
   };
 
   return (
@@ -299,6 +331,11 @@ export default function Admin() {
             <span className="font-display text-lg font-bold text-slate-900">BitsNdBricks Admin</span>
           </div>
           <div className="flex items-center gap-4">
+            {pendingCount > 0 && (
+              <button data-testid="admin-pending-badge" onClick={() => { setKind("inbox"); clearSel(); }} className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-200">
+                {pendingCount} pending
+              </button>
+            )}
             <a href="/" className="text-sm text-slate-500 hover:text-orange-600">View site →</a>
             <button data-testid="admin-logout" onClick={logout} className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-red-600">
               <LogOut className="h-4 w-4" /> Logout
@@ -309,7 +346,7 @@ export default function Admin() {
 
       <div className="mx-auto max-w-7xl px-6 py-8">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <Tabs value={kind} onValueChange={(v) => { setKind(v); }}>
+          <Tabs value={kind} onValueChange={(v) => { setKind(v); clearSel(); }}>
             <TabsList>
               <TabsTrigger value="job" data-testid="admin-tab-jobs">Jobs</TabsTrigger>
               <TabsTrigger value="tender" data-testid="admin-tab-tenders">Tenders</TabsTrigger>
@@ -336,10 +373,20 @@ export default function Admin() {
           <p className="mt-4 text-sm text-slate-500">Opportunities submitted by the public, awaiting review. Approve (publish), verify, or reject each one.</p>
         )}
 
-        <div className="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white">
-          <table className="w-full text-sm">
+        {kind === "inbox" && selected.size > 0 && (
+          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-white p-3">
+            <span className="text-sm font-medium text-slate-700">{selected.size} selected</span>
+            <Button size="sm" data-testid="bulk-approve" onClick={() => bulkAction({ status: "active" })} className="gap-1 bg-green-600 text-white hover:bg-green-700"><Send className="h-4 w-4" /> Approve &amp; publish</Button>
+            <Button size="sm" variant="outline" data-testid="bulk-reject" onClick={() => bulkAction({ status: "rejected", verification_status: "rejected" })} className="gap-1 text-amber-700"><XCircle className="h-4 w-4" /> Reject</Button>
+            <button onClick={clearSel} className="text-sm text-slate-500 hover:text-slate-700">Clear</button>
+          </div>
+        )}
+
+        <div className="mt-6 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+          <table className="w-full min-w-[720px] text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-400">
               <tr>
+                {kind === "inbox" && <th className="px-4 py-3"><Checkbox data-testid="bulk-select-all" checked={items.length > 0 && selected.size === items.length} onCheckedChange={(c) => setSelected(c ? new Set(items.map((i) => i.id)) : new Set())} /></th>}
                 <th className="px-4 py-3">ID</th>
                 {kind === "inbox" && <th className="px-4 py-3">Type</th>}
                 <th className="px-4 py-3">Title</th>
@@ -352,11 +399,12 @@ export default function Admin() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan={kind === "inbox" ? 8 : 7} className="px-4 py-10 text-center text-slate-400">Loading...</td></tr>
+                <tr><td colSpan={kind === "inbox" ? 9 : 7} className="px-4 py-10 text-center text-slate-400">Loading...</td></tr>
               ) : items.length === 0 ? (
-                <tr><td colSpan={kind === "inbox" ? 8 : 7} className="px-4 py-10 text-center text-slate-400">{kind === "inbox" ? "No pending submissions to review." : `No ${kind}s found.`}</td></tr>
+                <tr><td colSpan={kind === "inbox" ? 9 : 7} className="px-4 py-10 text-center text-slate-400">{kind === "inbox" ? "No pending submissions to review." : `No ${kind}s found.`}</td></tr>
               ) : items.map((it) => (
                 <tr key={it.id} data-testid={`admin-row-${it.bnb_id}`} className="hover:bg-slate-50">
+                  {kind === "inbox" && <td className="px-4 py-3"><Checkbox data-testid={`bulk-select-${it.bnb_id}`} checked={selected.has(it.id)} onCheckedChange={() => toggleSel(it.id)} /></td>}
                   <td className="px-4 py-3 font-mono text-xs text-slate-500">{it.bnb_id}</td>
                   {kind === "inbox" && <td className="px-4 py-3"><Badge className="bg-slate-100 capitalize text-slate-700">{it._type}</Badge></td>}
                   <td className="px-4 py-3 font-medium text-slate-800">

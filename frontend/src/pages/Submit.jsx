@@ -126,12 +126,14 @@ export default function Submit() {
               {kind === "job" ? "Job Information" : "Tender Information"}
             </h2>
             <div className="mt-4 space-y-4">
-              <Field label={kind === "job" ? "Job Title" : "Tender Title"}>
-                <Input data-testid="field-title" placeholder={kind === "job" ? "e.g. Site Electrician, 5 needed" : "e.g. Construction of Road from X to Y"} value={form.title} onChange={(e) => set("title", e.target.value)} />
-              </Field>
-              <Field label={kind === "job" ? "Company" : "Issuing Authority"}>
-                <Input data-testid="field-organization" placeholder={kind === "job" ? "e.g. Sri Sai Constructions" : "e.g. GHMC / South Central Railway / PWD"} value={form.organization} onChange={(e) => set("organization", e.target.value)} />
-              </Field>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label={kind === "job" ? "Job Title" : "Tender Title"}>
+                  <Input data-testid="field-title" placeholder={kind === "job" ? "e.g. Site Electrician, 5 needed" : "e.g. Construction of Road from X to Y"} value={form.title} onChange={(e) => set("title", e.target.value)} />
+                </Field>
+                <Field label={kind === "job" ? "Company" : "Issuing Authority"}>
+                  <Input data-testid="field-organization" placeholder={kind === "job" ? "e.g. Sri Sai Constructions" : "e.g. GHMC / South Central Railway / PWD"} value={form.organization} onChange={(e) => set("organization", e.target.value)} />
+                </Field>
+              </div>
 
               {kind === "job" ? (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -181,21 +183,25 @@ export default function Submit() {
                 </Field>
               )}
 
-              <Field label={kind === "job" ? "Last Date to Apply" : "Last Date to Apply / Submit"}>
-                <Input data-testid="field-lastdate" type="date" value={form.last_date} onChange={(e) => set("last_date", e.target.value)} />
-              </Field>
-
               {kind === "job" ? (
                 <>
-                  <Field label="Applicant Contact" hint="Who should applicants contact or send their details to?">
-                    <Input data-testid="field-applicant-contact" placeholder="Phone, email, WhatsApp or other contact for applicants" value={form.applicant_contact} onChange={(e) => set("applicant_contact", e.target.value)} />
-                  </Field>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Field label="Last Date to Apply">
+                      <Input data-testid="field-lastdate" type="date" value={form.last_date} onChange={(e) => set("last_date", e.target.value)} />
+                    </Field>
+                    <Field label="Applicant Contact" hint="Who should applicants contact or send their details to?">
+                      <Input data-testid="field-applicant-contact" placeholder="Phone, email, WhatsApp or other contact for applicants" value={form.applicant_contact} onChange={(e) => set("applicant_contact", e.target.value)} />
+                    </Field>
+                  </div>
                   <Field label="Applicant URL">
                     <Input data-testid="field-applicant-url" placeholder="https://example.com/apply" value={form.applicant_url} onChange={(e) => set("applicant_url", e.target.value)} />
                   </Field>
                 </>
               ) : (
                 <>
+                  <Field label="Last Date to Apply / Submit">
+                    <Input data-testid="field-lastdate" type="date" value={form.last_date} onChange={(e) => set("last_date", e.target.value)} />
+                  </Field>
                   <Field label="Official Tender / Apply URL">
                     <Input data-testid="field-official-url" placeholder="https://example.gov.in/tender/..." value={form.official_url} onChange={(e) => set("official_url", e.target.value)} />
                   </Field>

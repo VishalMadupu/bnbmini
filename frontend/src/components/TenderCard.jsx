@@ -12,7 +12,7 @@ export const TenderCard = ({ tender }) => (
     }`}
   >
     <div className="flex items-start justify-between gap-3">
-      <h3 className="font-display text-lg font-semibold leading-snug tracking-tight text-slate-900 group-hover:text-orange-600">
+      <h3 className="break-words font-display text-lg font-semibold leading-snug tracking-tight text-slate-900 group-hover:text-orange-600">
         {tender.title}
       </h3>
       {tender.verified && <VerifiedBadge />}

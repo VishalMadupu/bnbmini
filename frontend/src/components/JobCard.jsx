@@ -10,7 +10,7 @@ export const JobCard = ({ job }) => (
     className="group flex flex-col rounded-lg border border-slate-200 bg-white p-6 transition-transform transition-shadow duration-200 hover:-translate-y-1 hover:shadow-md"
   >
     <div className="flex items-start justify-between gap-3">
-      <h3 className="font-display text-lg font-semibold leading-snug tracking-tight text-slate-900 group-hover:text-orange-600">
+      <h3 className="break-words font-display text-lg font-semibold leading-snug tracking-tight text-slate-900 group-hover:text-orange-600">
         {job.title}
       </h3>
       {job.verified && <VerifiedBadge />}
