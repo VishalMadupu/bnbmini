@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Plus, Pencil, Trash2, CheckCircle2, Archive, Send, XCircle, Eye, HardHat } from "lucide-react";
+import { Plus, Pencil, Trash2, CheckCircle2, Archive, Send, XCircle, Eye, HardHat, KeyRound, LogOut } from "lucide-react";
 import Seo from "@/components/Seo";
 import { FileUpload } from "@/components/FileUpload";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
-import { INDIAN_STATES, SOURCE_TYPES, VERIFICATION_OPTIONS, STATUS_OPTIONS } from "@/lib/constants";
+import { INDIAN_STATES, SOURCE_TYPES, VERIFICATION_OPTIONS, STATUS_OPTIONS, COLLAR_TYPES, AUTHORITY_TYPES } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
 import { toast } from "sonner";
 
@@ -29,6 +29,7 @@ const statusColor = {
 
 const emptyForm = {
   title: "", organization: "", state: "", city: "", category: "", description: "",
+  collar_type: "Not Specified", trade: "", authority_type: "",
   last_date: "", applicant_email: "", applicant_phone: "", applicant_url: "",
   estimated_value: "", original_reference: "", official_url: "", contact_clarifications: "",
   attachment: null, source_type: "BNB Research", verification_status: "no_badge", status: "active",
@@ -108,6 +109,15 @@ function Editor({ open, onClose, kind, editing, onSaved }) {
 
           {kind === "job" ? (
             <div className="grid grid-cols-1 gap-3">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Collar type">
+                  <Select value={form.collar_type} onValueChange={(v) => set("collar_type", v)}>
+                    <SelectTrigger data-testid="admin-field-collar"><SelectValue /></SelectTrigger>
+                    <SelectContent>{COLLAR_TYPES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Trade"><Input placeholder="e.g. Electrician, Mason" value={form.trade || ""} onChange={(e) => set("trade", e.target.value)} /></Field>
+              </div>
               <Field label="Applicant email"><Input value={form.applicant_email || ""} onChange={(e) => set("applicant_email", e.target.value)} /></Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Applicant phone"><Input value={form.applicant_phone || ""} onChange={(e) => set("applicant_phone", e.target.value)} /></Field>
@@ -117,9 +127,15 @@ function Editor({ open, onClose, kind, editing, onSaved }) {
           ) : (
             <div className="grid grid-cols-1 gap-3">
               <div className="grid grid-cols-2 gap-3">
+                <Field label="Authority type">
+                  <Select value={form.authority_type || ""} onValueChange={(v) => set("authority_type", v)}>
+                    <SelectTrigger data-testid="admin-field-authority"><SelectValue placeholder="Select type" /></SelectTrigger>
+                    <SelectContent>{AUTHORITY_TYPES.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
+                  </Select>
+                </Field>
                 <Field label="Estimated value"><Input placeholder="₹4.25 Crore" value={form.estimated_value || ""} onChange={(e) => set("estimated_value", e.target.value)} /></Field>
-                <Field label="Original reference"><Input value={form.original_reference || ""} onChange={(e) => set("original_reference", e.target.value)} /></Field>
               </div>
+              <Field label="Original reference"><Input value={form.original_reference || ""} onChange={(e) => set("original_reference", e.target.value)} /></Field>
               <Field label="Official tender URL"><Input value={form.official_url || ""} onChange={(e) => set("official_url", e.target.value)} /></Field>
               <Field label="Contact for clarifications"><Input value={form.contact_clarifications || ""} onChange={(e) => set("contact_clarifications", e.target.value)} /></Field>
             </div>
@@ -179,7 +195,46 @@ function SubmitterDialog({ item, onClose }) {
   );
 }
 
+function AdminLogin({ onLogin }) {
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const { data } = await api.post("/admin/login", { password });
+      localStorage.setItem("bnb_admin_token", data.token);
+      onLogin(data.token);
+    } catch (err) {
+      toast.error("Incorrect password");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+      <form onSubmit={submit} className="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-8">
+        <div className="flex items-center gap-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-md bg-slate-900"><HardHat className="h-4 w-4 text-orange-500" /></span>
+          <span className="font-display text-lg font-bold text-slate-900">BitsNdBricks Admin</span>
+        </div>
+        <p className="mt-4 text-sm text-slate-500">Enter the admin password to continue.</p>
+        <div className="mt-4">
+          <Label className="mb-1.5 block text-sm font-medium text-slate-700">Password</Label>
+          <Input data-testid="admin-login-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" autoFocus />
+        </div>
+        <Button data-testid="admin-login-button" type="submit" disabled={loading} className="mt-5 w-full gap-2 bg-orange-600 text-white hover:bg-orange-700">
+          <KeyRound className="h-4 w-4" /> {loading ? "Signing in..." : "Sign in"}
+        </Button>
+      </form>
+    </div>
+  );
+}
+
 export default function Admin() {
+  const [token, setToken] = useState(() => localStorage.getItem("bnb_admin_token"));
   const [kind, setKind] = useState("job");
   const [statusFilter, setStatusFilter] = useState("all");
   const [items, setItems] = useState([]);
@@ -188,17 +243,26 @@ export default function Admin() {
   const [editing, setEditing] = useState(null);
   const [submitter, setSubmitter] = useState(null);
 
+  const logout = () => {
+    localStorage.removeItem("bnb_admin_token");
+    setToken(null);
+  };
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await api.get(`/admin/${kind}s`, { params: { status: statusFilter } });
       setItems(data);
+    } catch (err) {
+      if (err.response?.status === 401) logout();
     } finally {
       setLoading(false);
     }
   }, [kind, statusFilter]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (token) load(); }, [load, token]);
+
+  if (!token) return <AdminLogin onLogin={setToken} />;
 
   const patch = async (id, body) => {
     await api.patch(`/admin/${kind}s/${id}/status`, body);
@@ -222,7 +286,12 @@ export default function Admin() {
             <span className="flex h-8 w-8 items-center justify-center rounded-md bg-slate-900"><HardHat className="h-4 w-4 text-orange-500" /></span>
             <span className="font-display text-lg font-bold text-slate-900">BitsNdBricks Admin</span>
           </div>
-          <a href="/" className="text-sm text-slate-500 hover:text-orange-600">View site →</a>
+          <div className="flex items-center gap-4">
+            <a href="/" className="text-sm text-slate-500 hover:text-orange-600">View site →</a>
+            <button data-testid="admin-logout" onClick={logout} className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-red-600">
+              <LogOut className="h-4 w-4" /> Logout
+            </button>
+          </div>
         </div>
       </header>
 

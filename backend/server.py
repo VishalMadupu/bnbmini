@@ -1,4 +1,5 @@
-from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Query, Response
+from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Query, Response, Request
+from starlette.responses import JSONResponse, Response as StarletteResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -6,6 +7,9 @@ import os
 import re
 import logging
 import uuid
+import hmac
+import jwt
+import httpx
 import requests
 from pathlib import Path
 from pydantic import BaseModel, Field
@@ -25,6 +29,68 @@ STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
 EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
 APP_NAME = "bitsndbricks"
 storage_key = None
+
+# ---------------- Auth / Email / Site config ----------------
+JWT_SECRET = os.environ.get("JWT_SECRET", "change-me")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "bitsadmin123")
+EMAIL_BASE_URL = "https://integrations.emergentagent.com"
+EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY")
+EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "BitsNdBricks")
+ADMIN_NOTIFY_EMAIL = os.environ.get("ADMIN_NOTIFY_EMAIL")
+SITE_URL = (os.environ.get("SITE_URL") or "").rstrip("/")
+
+
+def create_admin_token():
+    payload = {"role": "admin", "exp": datetime.now(timezone.utc) + timedelta(days=7)}
+    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
+
+def verify_admin_token(token: str) -> bool:
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        return payload.get("role") == "admin"
+    except jwt.PyJWTError:
+        return False
+
+
+async def send_submission_email(kind: str, doc: dict):
+    if not EMAIL_KEY or not ADMIN_NOTIFY_EMAIL:
+        return
+    rows = "".join(
+        f'<tr><td style="padding:4px 12px 4px 0;color:#64748b;">{k}</td>'
+        f'<td style="padding:4px 0;color:#0f172a;">{v or "—"}</td></tr>'
+        for k, v in [
+            ("Type", kind.title()), ("BNB ID", doc.get("bnb_id")),
+            ("Title", doc.get("title")), ("Organization", doc.get("organization")),
+            ("Location", f'{doc.get("city", "")}, {doc.get("state", "")}'),
+            ("Submitter", doc.get("submitter_name")),
+            ("Submitter contact", doc.get("submitter_email")),
+        ]
+    )
+    html = (
+        '<div style="font-family:Arial,sans-serif;max-width:600px;">'
+        f'<h2 style="color:#0f172a;">New {kind} submission received</h2>'
+        '<p style="color:#475569;">A new opportunity was submitted for review on BitsNdBricks.</p>'
+        f'<table style="border-collapse:collapse;font-size:14px;">{rows}</table>'
+        '<p style="color:#94a3b8;font-size:12px;margin-top:16px;">Review it in the BitsNdBricks admin panel.</p>'
+        '</div>'
+    )
+    payload = {
+        "to": [ADMIN_NOTIFY_EMAIL],
+        "subject": f"New {kind} submission — {doc.get('bnb_id')}",
+        "html": html,
+        "from_name": EMAIL_FROM_NAME,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"{EMAIL_BASE_URL}/api/v1/email/send",
+                headers={"X-Email-Key": EMAIL_KEY},
+                json=payload,
+            )
+        resp.raise_for_status()
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Submission email failed: {e}")
 
 MIME_TYPES = {
     "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
@@ -142,6 +208,8 @@ def public_view(doc: dict) -> dict:
               "submitter_phone", "submitter_notes", "source_type"]:
         doc.pop(f, None)
     doc["verified"] = doc.get("verification_status") == "verified"
+    exp = doc.get("expiry_date")
+    doc["is_expired"] = bool(exp and exp < now_iso())
     return doc
 
 
@@ -165,6 +233,8 @@ class JobIn(BaseModel):
     state: str
     city: str
     category: Optional[str] = None
+    collar_type: Optional[str] = "Not Specified"
+    trade: Optional[str] = None
     description: str
     last_date: Optional[str] = None
     applicant_email: Optional[str] = None
@@ -188,6 +258,7 @@ class TenderIn(BaseModel):
     state: str
     city: str
     category: Optional[str] = None
+    authority_type: Optional[str] = None
     description: str
     last_date: Optional[str] = None
     estimated_value: Optional[str] = None
@@ -207,26 +278,29 @@ class TenderIn(BaseModel):
 
 class SubmissionIn(BaseModel):
     kind: Literal["job", "tender"]
-    title: str
-    organization: str
-    state: str
-    city: str
-    description: str
+    title: Optional[str] = None
+    organization: Optional[str] = None
+    state: Optional[str] = None
+    city: Optional[str] = None
+    description: Optional[str] = None
     last_date: Optional[str] = None
     # job
+    collar_type: Optional[str] = "Not Specified"
+    trade: Optional[str] = None
     applicant_email: Optional[str] = None
     applicant_phone: Optional[str] = None
     applicant_url: Optional[str] = None
     # tender
+    authority_type: Optional[str] = None
     estimated_value: Optional[str] = None
     original_reference: Optional[str] = None
     official_url: Optional[str] = None
     contact_clarifications: Optional[str] = None
     attachment: Optional[FileRef] = None
     # submitter
-    submitter_name: str
+    submitter_name: Optional[str] = None
     submitter_company: Optional[str] = None
-    submitter_email: str
+    submitter_email: Optional[str] = None
     submitter_phone: Optional[str] = None
     submitter_notes: Optional[str] = None
 
@@ -307,9 +381,10 @@ async def get_job(slug: str):
 @api_router.get("/tenders")
 async def list_tenders(search: Optional[str] = None, state: Optional[str] = None,
                        city: Optional[str] = None, category: Optional[str] = None,
-                       limit: int = 100):
+                       include_expired: bool = False, limit: int = 100):
     await archive_expired("tenders")
-    query = apply_filters({"status": "active"}, search, state, city, category)
+    base = {"status": {"$in": ["active", "archived"]}} if include_expired else {"status": "active"}
+    query = apply_filters(base, search, state, city, category)
     docs = await db.tenders.find(query).sort("posted_date", -1).to_list(limit)
     return [public_view(d) for d in docs]
 
@@ -359,9 +434,11 @@ async def create_submission(payload: SubmissionIn):
     }
     if kind == "job":
         job = {
-            "title": data["title"], "organization": data["organization"],
-            "state": data["state"], "city": data["city"],
-            "description": data["description"], "last_date": data.get("last_date"),
+            "title": data.get("title"), "organization": data.get("organization"),
+            "state": data.get("state"), "city": data.get("city"),
+            "description": data.get("description"), "last_date": data.get("last_date"),
+            "collar_type": data.get("collar_type") or "Not Specified",
+            "trade": data.get("trade"),
             "applicant_email": data.get("applicant_email"),
             "applicant_phone": data.get("applicant_phone"),
             "applicant_url": data.get("applicant_url"),
@@ -372,9 +449,10 @@ async def create_submission(payload: SubmissionIn):
         await db.jobs.insert_one(doc)
     else:
         tender = {
-            "title": data["title"], "organization": data["organization"],
-            "state": data["state"], "city": data["city"],
-            "description": data["description"], "last_date": data.get("last_date"),
+            "title": data.get("title"), "organization": data.get("organization"),
+            "state": data.get("state"), "city": data.get("city"),
+            "description": data.get("description"), "last_date": data.get("last_date"),
+            "authority_type": data.get("authority_type"),
             "estimated_value": data.get("estimated_value"),
             "original_reference": data.get("original_reference"),
             "official_url": data.get("official_url"),
@@ -384,6 +462,7 @@ async def create_submission(payload: SubmissionIn):
         }
         doc = await make_tender_doc(tender)
         await db.tenders.insert_one(doc)
+    await send_submission_email(kind, doc)
     return {"message": "submitted", "bnb_id": doc["bnb_id"]}
 
 
@@ -424,6 +503,17 @@ async def download(file_id: str):
 
 
 # ---------------- Admin ----------------
+class AdminLogin(BaseModel):
+    password: str
+
+
+@api_router.post("/admin/login")
+async def admin_login(payload: AdminLogin):
+    if not hmac.compare_digest(payload.password, ADMIN_PASSWORD):
+        raise HTTPException(status_code=401, detail="Incorrect password")
+    return {"token": create_admin_token()}
+
+
 @api_router.get("/admin/jobs")
 async def admin_list_jobs(status: Optional[str] = None):
     await archive_expired("jobs")
@@ -519,12 +609,39 @@ async def admin_delete_tender(item_id: str):
     return {"message": "deleted"}
 
 
+@api_router.get("/sitemap.xml")
+async def sitemap():
+    await archive_expired("jobs")
+    await archive_expired("tenders")
+    base = SITE_URL
+    urls = [f"{base}/", f"{base}/jobs", f"{base}/tenders", f"{base}/submit",
+            f"{base}/privacy", f"{base}/disclaimer", f"{base}/terms"]
+    jobs = await db.jobs.find({"status": "active"}, {"slug": 1}).to_list(1000)
+    tenders = await db.tenders.find({"status": {"$in": ["active", "archived"]}}, {"slug": 1}).to_list(1000)
+    urls += [f"{base}/jobs/{j['slug']}" for j in jobs]
+    urls += [f"{base}/tenders/{t['slug']}" for t in tenders]
+    items = "".join(f"<url><loc>{u}</loc></url>" for u in urls)
+    xml = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{items}</urlset>'
+    return StarletteResponse(content=xml, media_type="application/xml")
+
+
 @api_router.get("/")
 async def root():
     return {"message": "BitsNdBricks API"}
 
 
 app.include_router(api_router)
+
+
+@app.middleware("http")
+async def admin_guard(request: Request, call_next):
+    path = request.url.path
+    if request.method != "OPTIONS" and path.startswith("/api/admin/") and path != "/api/admin/login":
+        auth = request.headers.get("Authorization", "")
+        token = auth[7:] if auth.startswith("Bearer ") else ""
+        if not verify_admin_token(token):
+            return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+    return await call_next(request)
 
 app.add_middleware(
     CORSMiddleware,

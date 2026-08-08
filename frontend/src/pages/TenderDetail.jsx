@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { MapPin, CalendarClock, CalendarDays, Hash, Download, ArrowRight, ArrowLeft, Building2, IndianRupee, FileDigit, ExternalLink } from "lucide-react";
+import { MapPin, CalendarClock, CalendarDays, Hash, Download, ArrowRight, ArrowLeft, Building2, IndianRupee, FileDigit, ExternalLink, Clock, Landmark } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import Seo from "@/components/Seo";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
@@ -53,8 +53,18 @@ export default function TenderDetail() {
           <div className="lg:col-span-2">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <h1 className="font-display text-3xl font-bold tracking-tight text-slate-900">{tender.title}</h1>
-              {tender.verified && <VerifiedBadge />}
+              <div className="flex items-center gap-2">
+                {tender.verified && <VerifiedBadge />}
+                {tender.is_expired ? (
+                  <span data-testid="tender-status" className="inline-flex items-center rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-600">Expired</span>
+                ) : (
+                  <span data-testid="tender-status" className="inline-flex items-center rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-semibold text-green-700">Open</span>
+                )}
+              </div>
             </div>
+            {tender.original_reference && (
+              <p className="mt-1 font-mono text-sm text-slate-400"># {tender.original_reference}</p>
+            )}
             <p className="mt-2 flex items-center gap-2 text-lg font-medium text-slate-700">
               <Building2 className="h-5 w-5 text-slate-400" /> {tender.organization}
             </p>
@@ -86,9 +96,11 @@ export default function TenderDetail() {
               <h2 className="font-display text-lg font-semibold text-slate-900">Tender Information</h2>
               <div className="mt-2 divide-y divide-slate-100">
                 <InfoRow icon={MapPin} label="Location" value={`${tender.city}, ${tender.state}`} />
+                {tender.authority_type && <InfoRow icon={Landmark} label="Authority Type" value={tender.authority_type} />}
                 {tender.estimated_value && <InfoRow icon={IndianRupee} label="Estimated Value" value={tender.estimated_value} />}
                 <InfoRow icon={CalendarDays} label="Posted Date" value={formatDate(tender.posted_date)} />
                 {tender.last_date && <InfoRow icon={CalendarClock} label="Last Date for Submission" value={formatDate(tender.last_date)} />}
+                <InfoRow icon={Clock} label="Status" value={tender.is_expired ? <span className="font-semibold text-red-600">Expired</span> : <span className="font-semibold text-green-700">Open</span>} />
                 <InfoRow icon={Hash} label="BNB Tender ID" value={<span className="font-mono">{tender.bnb_id}</span>} />
                 {tender.original_reference && <InfoRow icon={FileDigit} label="Original Tender Reference" value={tender.original_reference} />}
               </div>

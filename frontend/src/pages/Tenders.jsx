@@ -29,7 +29,7 @@ export default function Tenders() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get("/tenders", { params: { search, state, city, category } });
+      const { data } = await api.get("/tenders", { params: { search, state, city, category, include_expired: true } });
       setTenders(data);
     } finally {
       setLoading(false);

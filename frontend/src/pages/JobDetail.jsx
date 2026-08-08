@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { MapPin, CalendarClock, CalendarDays, Hash, Download, Mail, Phone, ArrowRight, ArrowLeft, Building2 } from "lucide-react";
+import { MapPin, CalendarClock, CalendarDays, Hash, Download, Mail, Phone, ArrowRight, ArrowLeft, Building2, Layers, Wrench } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import Seo from "@/components/Seo";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
@@ -94,11 +94,14 @@ export default function JobDetail() {
                 <InfoRow icon={MapPin} label="Location" value={`${job.city}, ${job.state}`} />
                 <InfoRow icon={CalendarDays} label="Posted Date" value={formatDate(job.posted_date)} />
                 {job.last_date && <InfoRow icon={CalendarClock} label="Last Date to Apply" value={formatDate(job.last_date)} />}
+                {job.collar_type && job.collar_type !== "Not Specified" && <InfoRow icon={Layers} label="Collar Type" value={job.collar_type} />}
+                {job.trade && <InfoRow icon={Wrench} label="Trade" value={job.trade} />}
                 <InfoRow icon={Hash} label="Job ID" value={<span className="font-mono">{job.bnb_id}</span>} />
               </div>
 
               <div className="mt-6 border-t border-slate-100 pt-6">
-                <h3 className="font-display text-base font-semibold text-slate-900">How to Apply</h3>
+                <h3 className="font-display text-base font-semibold text-slate-900">Applicant Contact</h3>
+                <p className="mt-1 text-xs leading-relaxed text-slate-500">Who applicants should reach out to or send their details to.</p>
                 <div className="mt-3 space-y-2 text-sm">
                   {job.applicant_email && (
                     <a href={`mailto:${job.applicant_email}`} className="flex items-center gap-2 text-slate-600 hover:text-orange-600">

@@ -1,9 +1,19 @@
 export const INDIAN_STATES = [
-  "Andhra Pradesh", "Assam", "Bihar", "Chhattisgarh", "Delhi", "Goa",
-  "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
-  "Kerala", "Madhya Pradesh", "Maharashtra", "Odisha", "Punjab",
-  "Rajasthan", "Tamil Nadu", "Telangana", "Uttar Pradesh", "Uttarakhand",
-  "West Bengal",
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+  "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
+  "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram",
+  "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
+  "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
+  "Andaman & Nicobar Islands", "Chandigarh",
+  "Dadra & Nagar Haveli and Daman & Diu", "Delhi", "Jammu & Kashmir",
+  "Ladakh", "Lakshadweep", "Puducherry",
+];
+
+export const COLLAR_TYPES = ["White Collar", "Blue Collar", "Both", "Not Specified"];
+
+export const AUTHORITY_TYPES = [
+  "Government", "PSU / Public Sector", "Municipal / Local Body",
+  "Railway", "Private", "Other",
 ];
 
 export const JOB_CATEGORIES = [

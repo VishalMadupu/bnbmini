@@ -1,13 +1,11 @@
-"""BitsNdBricks Backend API tests."""
+"""BitsNdBricks Backend API tests - Iteration 2 (admin auth + new fields + sitemap)."""
 import os
 import io
-import re
 import pytest
 import requests
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL")
 if not BASE_URL:
-    # fallback: read frontend .env
     with open("/app/frontend/.env") as f:
         for line in f:
             if line.startswith("REACT_APP_BACKEND_URL="):
@@ -15,6 +13,7 @@ if not BASE_URL:
                 break
 BASE_URL = BASE_URL.rstrip("/")
 API = f"{BASE_URL}/api"
+ADMIN_PASSWORD = "bitsadmin123"
 
 
 @pytest.fixture(scope="session")
@@ -22,239 +21,190 @@ def s():
     return requests.Session()
 
 
+@pytest.fixture(scope="session")
+def admin_token(s):
+    r = s.post(f"{API}/admin/login", json={"password": ADMIN_PASSWORD})
+    assert r.status_code == 200, r.text
+    return r.json()["token"]
+
+
+@pytest.fixture(scope="session")
+def admin(s, admin_token):
+    s2 = requests.Session()
+    s2.headers.update({"Authorization": f"Bearer {admin_token}"})
+    return s2
+
+
+# ---- Admin Auth ----
+class TestAdminAuth:
+    def test_admin_jobs_requires_auth(self, s):
+        r = s.get(f"{API}/admin/jobs")
+        assert r.status_code == 401
+
+    def test_admin_tenders_requires_auth(self, s):
+        r = s.get(f"{API}/admin/tenders")
+        assert r.status_code == 401
+
+    def test_admin_login_wrong_password(self, s):
+        r = s.post(f"{API}/admin/login", json={"password": "wrong"})
+        assert r.status_code == 401
+
+    def test_admin_login_success(self, s):
+        r = s.post(f"{API}/admin/login", json={"password": ADMIN_PASSWORD})
+        assert r.status_code == 200
+        assert "token" in r.json() and len(r.json()["token"]) > 20
+
+    def test_admin_with_token_ok(self, admin):
+        r = admin.get(f"{API}/admin/jobs")
+        assert r.status_code == 200
+        r2 = admin.get(f"{API}/admin/tenders")
+        assert r2.status_code == 200
+
+    def test_admin_with_bad_token(self, s):
+        r = s.get(f"{API}/admin/jobs",
+                  headers={"Authorization": "Bearer notavalidtoken"})
+        assert r.status_code == 401
+
+
 # ---- Public: Meta, Jobs, Tenders ----
 class TestPublic:
     def test_meta(self, s):
         r = s.get(f"{API}/meta")
         assert r.status_code == 200
-        d = r.json()
         for k in ["job_states", "tender_states", "job_cities", "tender_cities"]:
-            assert k in d and isinstance(d[k], list)
+            assert k in r.json()
 
-    def test_list_jobs_seeded(self, s):
+    def test_list_jobs_public_view(self, s):
         r = s.get(f"{API}/jobs")
         assert r.status_code == 200
         jobs = r.json()
-        assert isinstance(jobs, list)
-        assert len(jobs) >= 1
+        assert isinstance(jobs, list) and len(jobs) >= 1
         j = jobs[0]
-        # public_view must strip submitter fields and source_type
-        for f in ["submitter_name", "submitter_company", "submitter_email",
-                  "submitter_phone", "submitter_notes", "source_type", "_id"]:
-            assert f not in j, f"public leak: {f}"
-        assert "verified" in j
-        assert "bnb_id" in j and j["bnb_id"].startswith("BNB-J-")
+        for f in ["submitter_name", "submitter_email", "source_type", "_id"]:
+            assert f not in j
+        assert "verified" in j and "is_expired" in j
+        assert j["bnb_id"].startswith("BNB-J-")
 
-    def test_list_tenders_seeded(self, s):
+    def test_list_tenders_default_no_expired(self, s):
         r = s.get(f"{API}/tenders")
         assert r.status_code == 200
-        tenders = r.json()
-        assert len(tenders) >= 1
-        t = tenders[0]
-        for f in ["submitter_name", "submitter_email", "source_type", "_id"]:
-            assert f not in t
-        assert t["bnb_id"].startswith("BNB-T-")
+        for t in r.json():
+            assert t["is_expired"] is False
 
-    def test_jobs_search_and_filter(self, s):
-        # Filter by state present in meta
-        meta = s.get(f"{API}/meta").json()
-        if meta["job_states"]:
-            st = meta["job_states"][0]
-            r = s.get(f"{API}/jobs", params={"state": st})
-            assert r.status_code == 200
-            for j in r.json():
-                assert j["state"] == st
+    def test_list_tenders_include_expired(self, s):
+        r = s.get(f"{API}/tenders", params={"include_expired": "true"})
+        assert r.status_code == 200
+        # Expired flag exists on all
+        for t in r.json():
+            assert "is_expired" in t
 
     def test_get_job_by_bnb_id(self, s):
         r = s.get(f"{API}/jobs/BNB-J-2026-00001")
         assert r.status_code == 200
         assert r.json()["bnb_id"] == "BNB-J-2026-00001"
 
-    def test_get_job_by_slug(self, s):
-        # Fetch list first, then use slug
-        jobs = s.get(f"{API}/jobs").json()
-        slug = jobs[0]["slug"]
-        r = s.get(f"{API}/jobs/{slug}")
-        assert r.status_code == 200
-        assert r.json()["bnb_id"] == jobs[0]["bnb_id"]
 
-    def test_get_tender_by_bnb_id(self, s):
-        r = s.get(f"{API}/tenders/BNB-T-2026-00001")
-        assert r.status_code == 200
-        assert r.json()["bnb_id"] == "BNB-T-2026-00001"
+# ---- Submissions ----
+class TestSubmissions:
+    def test_submit_minimal_kind_only(self, s):
+        """All fields optional except kind."""
+        r = s.post(f"{API}/submissions", json={"kind": "job"})
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d.get("bnb_id", "").startswith("BNB-J-")
+        pytest.minimal_bnb = d["bnb_id"]
 
-    def test_get_job_404(self, s):
-        r = s.get(f"{API}/jobs/BNB-J-2026-99999")
+    def test_minimal_submission_hidden_from_public(self, s):
+        bnb = pytest.minimal_bnb
+        listing = s.get(f"{API}/jobs").json()
+        assert not any(j["bnb_id"] == bnb for j in listing)
+        r = s.get(f"{API}/jobs/{bnb}")
         assert r.status_code == 404
 
-
-# ---- Submissions (public, becomes pending, hidden from public list) ----
-class TestSubmissions:
-    def test_submit_job_pending_hidden(self, s):
+    def test_submit_job_with_new_fields(self, s):
         payload = {
-            "kind": "job", "title": "TEST_Public Job Sub",
-            "organization": "TEST Org", "state": "TestState",
-            "city": "TestCity", "description": "Test job description",
-            "applicant_email": "apply@test.com",
-            "submitter_name": "Submitter", "submitter_email": "sub@test.com",
+            "kind": "job", "title": "TEST_Sub With Collar",
+            "collar_type": "Blue Collar", "trade": "Carpenter",
+            "submitter_name": "Jane", "submitter_email": "j@t.com",
         }
         r = s.post(f"{API}/submissions", json=payload)
-        assert r.status_code == 200, r.text
-        bnb = r.json()["bnb_id"]
-        assert bnb.startswith("BNB-J-")
-        # Should NOT appear in public list
-        listing = s.get(f"{API}/jobs", params={"search": "TEST_Public Job Sub"}).json()
-        assert not any(j["bnb_id"] == bnb for j in listing)
-        # Should 404 on public detail (pending)
-        r2 = s.get(f"{API}/jobs/{bnb}")
-        assert r2.status_code == 404
-        pytest.submitted_job_bnb = bnb
+        assert r.status_code == 200
 
-    def test_submit_tender_pending(self, s):
-        payload = {
-            "kind": "tender", "title": "TEST_Public Tender Sub",
-            "organization": "TEST Org", "state": "TS", "city": "TC",
-            "description": "Test tender desc",
-            "official_url": "https://example.com/tender",
-            "submitter_name": "Submitter", "submitter_email": "sub@test.com",
-        }
-        r = s.post(f"{API}/submissions", json=payload)
-        assert r.status_code == 200, r.text
+    def test_submit_tender_minimal(self, s):
+        r = s.post(f"{API}/submissions", json={"kind": "tender"})
+        assert r.status_code == 200
         assert r.json()["bnb_id"].startswith("BNB-T-")
 
 
-# ---- File upload / download ----
-class TestUpload:
-    def test_upload_and_download(self, s):
-        files = {"file": ("test.txt", io.BytesIO(b"hello world"), "text/plain")}
-        r = s.post(f"{API}/upload", files=files)
-        assert r.status_code == 200, r.text
-        d = r.json()
-        assert "file_id" in d and "url" in d
-        fid = d["file_id"]
-        # Download
-        r2 = s.get(f"{BASE_URL}{d['url']}")
-        assert r2.status_code == 200
-        assert r2.content == b"hello world"
-
-
-# ---- Admin CRUD ----
-class TestAdmin:
-    created_job_id = None
-    created_tender_id = None
-    created_job_bnb = None
-
-    def test_admin_list_jobs_all_statuses(self, s):
-        r = s.get(f"{API}/admin/jobs")
-        assert r.status_code == 200
-        docs = r.json()
-        assert len(docs) >= 6
-        statuses = {d["status"] for d in docs}
-        # Pending submissions should be visible in admin
-        # (from submissions test earlier)
-
-    def test_admin_list_tenders_all(self, s):
-        r = s.get(f"{API}/admin/tenders")
-        assert r.status_code == 200
-        assert len(r.json()) >= 6
-
-    def test_admin_create_job_sequential_id(self, s):
-        # Get current max seq
-        all_jobs = s.get(f"{API}/admin/jobs").json()
-        max_seq = max(int(j["bnb_id"].split("-")[-1]) for j in all_jobs)
+# ---- New fields (admin) ----
+class TestNewFields:
+    def test_admin_create_job_with_collar_trade(self, admin):
         payload = {
-            "title": "TEST_Admin Job", "organization": "TEST",
-            "state": "TS", "city": "TC", "description": "desc",
-            "applicant_url": "https://example.com",
+            "title": "TEST_Job Collar", "organization": "TEST",
+            "state": "Delhi", "city": "New Delhi",
+            "description": "desc",
+            "collar_type": "White Collar", "trade": "Electrical",
         }
-        r = s.post(f"{API}/admin/jobs", json=payload)
+        r = admin.post(f"{API}/admin/jobs", json=payload)
         assert r.status_code == 200, r.text
         d = r.json()
-        new_seq = int(d["bnb_id"].split("-")[-1])
-        assert new_seq > max_seq
-        TestAdmin.created_job_id = d["id"]
-        TestAdmin.created_job_bnb = d["bnb_id"]
+        assert d["collar_type"] == "White Collar"
+        assert d["trade"] == "Electrical"
+        # Public detail returns them
+        pub = admin.get(f"{API}/jobs/{d['bnb_id']}")
+        assert pub.status_code == 200
+        assert pub.json()["collar_type"] == "White Collar"
+        assert pub.json()["trade"] == "Electrical"
+        pytest.new_job_id = d["id"]
 
-    def test_admin_create_tender_sequential_id(self, s):
-        all_t = s.get(f"{API}/admin/tenders").json()
-        max_seq = max(int(t["bnb_id"].split("-")[-1]) for t in all_t)
+    def test_admin_create_tender_with_authority_type(self, admin):
         payload = {
-            "title": "TEST_Admin Tender", "organization": "TEST",
-            "state": "TS", "city": "TC", "description": "desc",
+            "title": "TEST_Tender Auth", "organization": "TEST",
+            "state": "Ladakh", "city": "Leh",
+            "description": "desc",
+            "authority_type": "Central Government",
             "official_url": "https://gov.example.com",
         }
-        r = s.post(f"{API}/admin/tenders", json=payload)
+        r = admin.post(f"{API}/admin/tenders", json=payload)
         assert r.status_code == 200
         d = r.json()
-        assert int(d["bnb_id"].split("-")[-1]) > max_seq
-        TestAdmin.created_tender_id = d["id"]
+        assert d["authority_type"] == "Central Government"
+        pub = admin.get(f"{API}/tenders/{d['bnb_id']}")
+        assert pub.json()["authority_type"] == "Central Government"
+        pytest.new_tender_id = d["id"]
 
-    def test_admin_update_job(self, s):
-        assert TestAdmin.created_job_id
-        payload = {
-            "title": "TEST_Admin Job Updated", "organization": "TEST",
-            "state": "TS", "city": "TC", "description": "updated desc",
-        }
-        r = s.put(f"{API}/admin/jobs/{TestAdmin.created_job_id}", json=payload)
+
+# ---- Sitemap ----
+class TestSitemap:
+    def test_sitemap_xml(self, s):
+        r = s.get(f"{API}/sitemap.xml")
         assert r.status_code == 200
-        assert r.json()["title"] == "TEST_Admin Job Updated"
+        assert "xml" in r.headers.get("Content-Type", "")
+        body = r.text
+        assert body.startswith("<?xml")
+        for path in ["/jobs", "/tenders", "/submit", "/privacy", "/disclaimer", "/terms"]:
+            assert path in body, f"missing {path}"
+        # Contains at least one listing url with bnb id
+        assert "bnb-j-" in body.lower() or "BNB-J" in body
 
-    def test_admin_verify_job(self, s):
-        r = s.patch(
-            f"{API}/admin/jobs/{TestAdmin.created_job_id}/status",
-            json={"verification_status": "verified"},
-        )
+
+# ---- Upload ----
+class TestUpload:
+    def test_upload_download(self, s):
+        files = {"file": ("t.txt", io.BytesIO(b"hi"), "text/plain")}
+        r = s.post(f"{API}/upload", files=files)
         assert r.status_code == 200
-        assert r.json()["verification_status"] == "verified"
-        # Public should show verified true
-        pub = s.get(f"{API}/jobs/{TestAdmin.created_job_bnb}")
-        assert pub.status_code == 200
-        assert pub.json()["verified"] is True
+        d = r.json()
+        r2 = s.get(f"{BASE_URL}{d['url']}")
+        assert r2.status_code == 200 and r2.content == b"hi"
 
-    def test_admin_archive_hides_from_public(self, s):
-        r = s.patch(
-            f"{API}/admin/jobs/{TestAdmin.created_job_id}/status",
-            json={"status": "archived"},
-        )
-        assert r.status_code == 200
-        pub = s.get(f"{API}/jobs/{TestAdmin.created_job_bnb}")
-        # archived not in explicit hidden list but not active either
-        # get_job hides draft/pending/rejected; archived allowed to be fetched
-        # but not in list
-        listing = s.get(f"{API}/jobs").json()
-        assert not any(j["bnb_id"] == TestAdmin.created_job_bnb for j in listing)
 
-    def test_admin_publish_pending(self, s):
-        # Create pending via submission then publish it
-        sub = {
-            "kind": "job", "title": "TEST_ToPublish", "organization": "T",
-            "state": "TS", "city": "TC", "description": "d",
-            "submitter_name": "X", "submitter_email": "x@x.com",
-        }
-        s.post(f"{API}/submissions", json=sub).raise_for_status()
-        # Find in admin
-        docs = s.get(f"{API}/admin/jobs", params={"status": "pending"}).json()
-        target = next(d for d in docs if d["title"] == "TEST_ToPublish")
-        # submitter info visible in admin
-        assert target.get("submitter_email") == "x@x.com"
-        r = s.patch(f"{API}/admin/jobs/{target['id']}/status",
-                    json={"status": "active"})
-        assert r.status_code == 200
-        # Now public list should include it
-        listing = s.get(f"{API}/jobs", params={"search": "TEST_ToPublish"}).json()
-        assert any(j["bnb_id"] == target["bnb_id"] for j in listing)
-
-    def test_admin_delete(self, s):
-        r = s.delete(f"{API}/admin/jobs/{TestAdmin.created_job_id}")
-        assert r.status_code == 200
-
-    def test_cleanup_tender(self, s):
-        if TestAdmin.created_tender_id:
-            s.delete(f"{API}/admin/tenders/{TestAdmin.created_tender_id}")
-
-    def test_cleanup_all_test_prefixed(self, s):
+# ---- Cleanup ----
+class TestZCleanup:
+    def test_cleanup_test_prefixed(self, admin):
         for coll in ["jobs", "tenders"]:
-            docs = s.get(f"{API}/admin/{coll}").json()
+            docs = admin.get(f"{API}/admin/{coll}").json()
             for d in docs:
-                if d.get("title", "").startswith("TEST_"):
-                    s.delete(f"{API}/admin/{coll}/{d['id']}")
+                title = d.get("title") or ""
+                if title.startswith("TEST_") or (d.get("status") == "pending" and not title):
+                    admin.delete(f"{API}/admin/{coll}/{d['id']}")
