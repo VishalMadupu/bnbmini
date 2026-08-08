@@ -251,8 +251,20 @@ export default function Admin() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get(`/admin/${kind}s`, { params: { status: statusFilter } });
-      setItems(data);
+      if (kind === "inbox") {
+        const [j, t] = await Promise.all([
+          api.get(`/admin/jobs`, { params: { status: "pending" } }),
+          api.get(`/admin/tenders`, { params: { status: "pending" } }),
+        ]);
+        const merged = [
+          ...j.data.map((x) => ({ ...x, _type: "job" })),
+          ...t.data.map((x) => ({ ...x, _type: "tender" })),
+        ].sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+        setItems(merged);
+      } else {
+        const { data } = await api.get(`/admin/${kind}s`, { params: { status: statusFilter } });
+        setItems(data.map((x) => ({ ...x, _type: kind })));
+      }
     } catch (err) {
       if (err.response?.status === 401) logout();
     } finally {
@@ -264,15 +276,15 @@ export default function Admin() {
 
   if (!token) return <AdminLogin onLogin={setToken} />;
 
-  const patch = async (id, body) => {
-    await api.patch(`/admin/${kind}s/${id}/status`, body);
+  const patch = async (id, body, rowKind) => {
+    await api.patch(`/admin/${rowKind || kind}s/${id}/status`, body);
     toast.success("Updated");
     load();
   };
 
-  const remove = async (id) => {
+  const remove = async (id, rowKind) => {
     if (!window.confirm("Delete this listing permanently?")) return;
-    await api.delete(`/admin/${kind}s/${id}`);
+    await api.delete(`/admin/${rowKind || kind}s/${id}`);
     toast.success("Deleted");
     load();
   };
@@ -301,27 +313,35 @@ export default function Admin() {
             <TabsList>
               <TabsTrigger value="job" data-testid="admin-tab-jobs">Jobs</TabsTrigger>
               <TabsTrigger value="tender" data-testid="admin-tab-tenders">Tenders</TabsTrigger>
+              <TabsTrigger value="inbox" data-testid="admin-tab-inbox">Inbox{kind === "inbox" && items.length ? ` (${items.length})` : ""}</TabsTrigger>
             </TabsList>
           </Tabs>
-          <div className="flex items-center gap-3">
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger data-testid="admin-status-filter" className="w-40 bg-white"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                {STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Button data-testid="admin-create-button" onClick={() => { setEditing(null); setEditorOpen(true); }} className="gap-2 bg-orange-600 text-white hover:bg-orange-700">
-              <Plus className="h-4 w-4" /> Create {kind}
-            </Button>
-          </div>
+          {kind !== "inbox" && (
+            <div className="flex items-center gap-3">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger data-testid="admin-status-filter" className="w-40 bg-white"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  {STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Button data-testid="admin-create-button" onClick={() => { setEditing(null); setEditorOpen(true); }} className="gap-2 bg-orange-600 text-white hover:bg-orange-700">
+                <Plus className="h-4 w-4" /> Create {kind}
+              </Button>
+            </div>
+          )}
         </div>
+
+        {kind === "inbox" && (
+          <p className="mt-4 text-sm text-slate-500">Opportunities submitted by the public, awaiting review. Approve (publish), verify, or reject each one.</p>
+        )}
 
         <div className="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-400">
               <tr>
                 <th className="px-4 py-3">ID</th>
+                {kind === "inbox" && <th className="px-4 py-3">Type</th>}
                 <th className="px-4 py-3">Title</th>
                 <th className="px-4 py-3 hidden md:table-cell">Location</th>
                 <th className="px-4 py-3 hidden lg:table-cell">Last date</th>
@@ -332,14 +352,15 @@ export default function Admin() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-400">Loading...</td></tr>
+                <tr><td colSpan={kind === "inbox" ? 8 : 7} className="px-4 py-10 text-center text-slate-400">Loading...</td></tr>
               ) : items.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-400">No {kind}s found.</td></tr>
+                <tr><td colSpan={kind === "inbox" ? 8 : 7} className="px-4 py-10 text-center text-slate-400">{kind === "inbox" ? "No pending submissions to review." : `No ${kind}s found.`}</td></tr>
               ) : items.map((it) => (
                 <tr key={it.id} data-testid={`admin-row-${it.bnb_id}`} className="hover:bg-slate-50">
                   <td className="px-4 py-3 font-mono text-xs text-slate-500">{it.bnb_id}</td>
+                  {kind === "inbox" && <td className="px-4 py-3"><Badge className="bg-slate-100 capitalize text-slate-700">{it._type}</Badge></td>}
                   <td className="px-4 py-3 font-medium text-slate-800">
-                    <div className="max-w-xs truncate">{it.title}</div>
+                    <div className="max-w-xs truncate">{it.title || <span className="italic text-slate-400">(untitled)</span>}</div>
                     <div className="text-xs text-slate-400">{it.organization}</div>
                   </td>
                   <td className="px-4 py-3 hidden md:table-cell text-slate-500">{it.city}, {it.state}</td>
@@ -357,18 +378,18 @@ export default function Admin() {
                       <button title="View submitter" data-testid={`admin-submitter-${it.bnb_id}`} onClick={() => setSubmitter(it)} className="rounded p-1.5 text-slate-500 hover:bg-slate-100"><Eye className="h-4 w-4" /></button>
                       <button title="Edit" data-testid={`admin-edit-${it.bnb_id}`} onClick={() => { setEditing(it); setEditorOpen(true); }} className="rounded p-1.5 text-slate-500 hover:bg-slate-100"><Pencil className="h-4 w-4" /></button>
                       {it.status !== "active" && (
-                        <button title="Publish" data-testid={`admin-publish-${it.bnb_id}`} onClick={() => patch(it.id, { status: "active" })} className="rounded p-1.5 text-green-600 hover:bg-green-50"><Send className="h-4 w-4" /></button>
+                        <button title="Approve & publish" data-testid={`admin-publish-${it.bnb_id}`} onClick={() => patch(it.id, { status: "active" }, it._type)} className="rounded p-1.5 text-green-600 hover:bg-green-50"><Send className="h-4 w-4" /></button>
                       )}
                       {it.verification_status !== "verified" && (
-                        <button title="Mark verified" data-testid={`admin-verify-${it.bnb_id}`} onClick={() => patch(it.id, { verification_status: "verified" })} className="rounded p-1.5 text-green-600 hover:bg-green-50"><CheckCircle2 className="h-4 w-4" /></button>
+                        <button title="Mark verified" data-testid={`admin-verify-${it.bnb_id}`} onClick={() => patch(it.id, { verification_status: "verified" }, it._type)} className="rounded p-1.5 text-green-600 hover:bg-green-50"><CheckCircle2 className="h-4 w-4" /></button>
                       )}
                       {it.status !== "archived" && (
-                        <button title="Archive" onClick={() => patch(it.id, { status: "archived" })} className="rounded p-1.5 text-slate-500 hover:bg-slate-100"><Archive className="h-4 w-4" /></button>
+                        <button title="Archive" onClick={() => patch(it.id, { status: "archived" }, it._type)} className="rounded p-1.5 text-slate-500 hover:bg-slate-100"><Archive className="h-4 w-4" /></button>
                       )}
                       {it.status !== "rejected" && (
-                        <button title="Reject" data-testid={`admin-reject-${it.bnb_id}`} onClick={() => patch(it.id, { status: "rejected", verification_status: "rejected" })} className="rounded p-1.5 text-amber-600 hover:bg-amber-50"><XCircle className="h-4 w-4" /></button>
+                        <button title="Reject" data-testid={`admin-reject-${it.bnb_id}`} onClick={() => patch(it.id, { status: "rejected", verification_status: "rejected" }, it._type)} className="rounded p-1.5 text-amber-600 hover:bg-amber-50"><XCircle className="h-4 w-4" /></button>
                       )}
-                      <button title="Delete" data-testid={`admin-delete-${it.bnb_id}`} onClick={() => remove(it.id)} className="rounded p-1.5 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
+                      <button title="Delete" data-testid={`admin-delete-${it.bnb_id}`} onClick={() => remove(it.id, it._type)} className="rounded p-1.5 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
                     </div>
                   </td>
                 </tr>
@@ -378,7 +399,7 @@ export default function Admin() {
         </div>
       </div>
 
-      <Editor open={editorOpen} onClose={() => setEditorOpen(false)} kind={kind} editing={editing} onSaved={load} />
+      <Editor open={editorOpen} onClose={() => setEditorOpen(false)} kind={kind === "inbox" ? (editing?._type || "job") : kind} editing={editing} onSaved={load} />
       <SubmitterDialog item={submitter} onClose={() => setSubmitter(null)} />
     </div>
   );

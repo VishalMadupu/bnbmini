@@ -10,7 +10,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { api } from "@/lib/api";
-import { INDIAN_STATES, JOB_CATEGORIES } from "@/lib/constants";
+import { JOB_CATEGORIES } from "@/lib/constants";
 
 export default function Jobs() {
   const [params, setParams] = useSearchParams();
@@ -18,13 +18,17 @@ export default function Jobs() {
   const [state, setState] = useState(params.get("state") || "all");
   const [city, setCity] = useState("all");
   const [category, setCategory] = useState("all");
-  const [cities, setCities] = useState([]);
+  const [meta, setMeta] = useState({ states: [], cities: [], byState: {} });
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get("/meta").then((r) => setCities(r.data.job_cities)).catch(() => {});
+    api.get("/meta").then((r) => setMeta({
+      states: r.data.job_states, cities: r.data.job_cities, byState: r.data.job_cities_by_state,
+    })).catch(() => {});
   }, []);
+
+  const cityOptions = state === "all" ? meta.cities : (meta.byState[state] || []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -65,18 +69,18 @@ export default function Jobs() {
         </form>
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Select value={state} onValueChange={setState}>
+          <Select value={state} onValueChange={(v) => { setState(v); setCity("all"); }}>
             <SelectTrigger data-testid="filter-state" className="bg-white"><SelectValue placeholder="State" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All States</SelectItem>
-              {INDIAN_STATES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              {meta.states.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={city} onValueChange={setCity}>
             <SelectTrigger data-testid="filter-city" className="bg-white"><SelectValue placeholder="City" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Cities</SelectItem>
-              {cities.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              {cityOptions.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={category} onValueChange={setCategory}>
