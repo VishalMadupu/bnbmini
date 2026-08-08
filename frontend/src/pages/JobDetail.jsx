@@ -1,0 +1,131 @@
+import { useEffect, useState } from "react";
+import { useParams, Link } from "react-router-dom";
+import { MapPin, CalendarClock, CalendarDays, Hash, Download, Mail, Phone, ArrowRight, ArrowLeft, Building2 } from "lucide-react";
+import { Layout } from "@/components/Layout";
+import Seo from "@/components/Seo";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
+import { Button } from "@/components/ui/button";
+import { api, fileUrl } from "@/lib/api";
+import { formatDate } from "@/lib/format";
+
+const InfoRow = ({ icon: Icon, label, value }) => (
+  <div className="flex items-start gap-3 py-2.5">
+    <Icon className="mt-0.5 h-4 w-4 flex-shrink-0 text-slate-400" />
+    <div>
+      <div className="text-xs uppercase tracking-wide text-slate-400">{label}</div>
+      <div className="text-sm font-medium text-slate-800">{value}</div>
+    </div>
+  </div>
+);
+
+export default function JobDetail() {
+  const { slug } = useParams();
+  const [job, setJob] = useState(null);
+  const [notFound, setNotFound] = useState(false);
+
+  useEffect(() => {
+    setJob(null);
+    setNotFound(false);
+    api.get(`/jobs/${slug}`).then((r) => setJob(r.data)).catch(() => setNotFound(true));
+  }, [slug]);
+
+  if (notFound) {
+    return (
+      <Layout>
+        <div className="mx-auto max-w-6xl px-4 py-24 text-center">
+          <h1 className="font-display text-2xl font-bold text-slate-900">Job not found</h1>
+          <Link to="/jobs"><Button className="mt-6 bg-orange-600 text-white hover:bg-orange-700">Browse all jobs</Button></Link>
+        </div>
+      </Layout>
+    );
+  }
+  if (!job) return <Layout><div className="mx-auto max-w-6xl px-4 py-24 text-slate-500">Loading...</div></Layout>;
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "JobPosting",
+    title: job.title,
+    description: job.description,
+    identifier: { "@type": "PropertyValue", name: "BitsNdBricks", value: job.bnb_id },
+    hiringOrganization: { "@type": "Organization", name: job.organization },
+    jobLocation: { "@type": "Place", address: { "@type": "PostalAddress", addressLocality: job.city, addressRegion: job.state, addressCountry: "IN" } },
+    datePosted: job.posted_date,
+    validThrough: job.last_date || undefined,
+  };
+
+  return (
+    <Layout>
+      <Seo title={`${job.title} Jobs in ${job.city} | BitsNdBricks`} description={`${job.title} at ${job.organization} in ${job.city}, ${job.state}. ${job.description?.slice(0, 140)}`} jsonLd={jsonLd} />
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+        <Link to="/jobs" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-orange-600">
+          <ArrowLeft className="h-4 w-4" /> Back to Jobs
+        </Link>
+
+        <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <h1 className="font-display text-3xl font-bold tracking-tight text-slate-900">{job.title}</h1>
+              {job.verified && <VerifiedBadge />}
+            </div>
+            <p className="mt-2 flex items-center gap-2 text-lg font-medium text-slate-700">
+              <Building2 className="h-5 w-5 text-slate-400" /> {job.organization}
+            </p>
+
+            <div className="mt-8">
+              <h2 className="font-display text-xl font-semibold text-slate-900">Job Description</h2>
+              <p className="mt-3 whitespace-pre-line leading-relaxed text-slate-600">{job.description}</p>
+            </div>
+
+            {job.attachment && (
+              <div className="mt-8">
+                <h2 className="font-display text-xl font-semibold text-slate-900">Attachment</h2>
+                <a href={fileUrl(job.attachment.url)} target="_blank" rel="noopener noreferrer" data-testid="job-attachment">
+                  <Button variant="outline" className="mt-3 gap-2"><Download className="h-4 w-4" /> Download Attachment</Button>
+                </a>
+              </div>
+            )}
+          </div>
+
+          {/* Sidebar */}
+          <aside className="lg:col-span-1">
+            <div className="rounded-lg border border-slate-200 bg-white p-6">
+              <h2 className="font-display text-lg font-semibold text-slate-900">Basic Information</h2>
+              <div className="mt-2 divide-y divide-slate-100">
+                <InfoRow icon={MapPin} label="Location" value={`${job.city}, ${job.state}`} />
+                <InfoRow icon={CalendarDays} label="Posted Date" value={formatDate(job.posted_date)} />
+                {job.last_date && <InfoRow icon={CalendarClock} label="Last Date to Apply" value={formatDate(job.last_date)} />}
+                <InfoRow icon={Hash} label="Job ID" value={<span className="font-mono">{job.bnb_id}</span>} />
+              </div>
+
+              <div className="mt-6 border-t border-slate-100 pt-6">
+                <h3 className="font-display text-base font-semibold text-slate-900">How to Apply</h3>
+                <div className="mt-3 space-y-2 text-sm">
+                  {job.applicant_email && (
+                    <a href={`mailto:${job.applicant_email}`} className="flex items-center gap-2 text-slate-600 hover:text-orange-600">
+                      <Mail className="h-4 w-4" /> {job.applicant_email}
+                    </a>
+                  )}
+                  {job.applicant_phone && (
+                    <a href={`tel:${job.applicant_phone}`} className="flex items-center gap-2 text-slate-600 hover:text-orange-600">
+                      <Phone className="h-4 w-4" /> {job.applicant_phone}
+                    </a>
+                  )}
+                </div>
+                {job.applicant_url && (
+                  <a href={job.applicant_url} target="_blank" rel="noopener noreferrer" data-testid="job-apply-now">
+                    <Button className="mt-4 w-full gap-2 bg-orange-600 text-white hover:bg-orange-700 active:scale-95">
+                      Apply Now <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </a>
+                )}
+              </div>
+            </div>
+            <p className="mt-4 px-1 text-xs leading-relaxed text-slate-400">
+              BitsNdBricks is a discovery platform. Please verify all details directly with the employer or recruiter before applying.
+            </p>
+          </aside>
+        </div>
+      </div>
+    </Layout>
+  );
+}
