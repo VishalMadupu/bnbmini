@@ -33,7 +33,7 @@ export default function Home() {
       />
 
       {/* Hero */}
-      <section className="relative overflow-hidden border-b border-slate-200 bg-slate-900">
+      <section className="relative overflow-hidden border-b border-slate-200 bg-brand-900">
         <img
           src="https://images.unsplash.com/photo-1527335988388-b40ee248d80c?crop=entropy&cs=srgb&fm=jpg&q=85&w=1600"
           alt="Construction site"
@@ -55,13 +55,13 @@ export default function Home() {
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="Search jobs, tenders, companies or locations..."
-                className="h-14 rounded-lg border-0 bg-white pl-12 text-base text-slate-900 shadow-lg"
+                className="h-14 rounded-lg border-0 bg-white pl-12 text-base text-brand-900 shadow-lg"
               />
             </div>
             <Button
               type="submit"
               data-testid="hero-search-button"
-              className="h-14 rounded-lg bg-orange-600 px-8 text-base font-semibold text-white hover:bg-orange-700 active:scale-95"
+              className="h-14 rounded-lg bg-brand-600 px-8 text-base font-semibold text-white hover:bg-brand-700 active:scale-95"
             >
               Search
             </Button>
@@ -91,8 +91,8 @@ export default function Home() {
       {/* Latest Jobs */}
       <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8">
         <div className="flex items-end justify-between">
-          <h2 className="font-display text-2xl font-bold tracking-tight text-slate-900">Latest Jobs</h2>
-          <Button variant="ghost" data-testid="view-all-jobs" onClick={() => navigate("/jobs")} className="gap-1 text-orange-600 hover:text-orange-700">
+          <h2 className="font-display text-2xl font-bold tracking-tight text-brand-900">Latest Jobs</h2>
+          <Button variant="ghost" data-testid="view-all-jobs" onClick={() => navigate("/jobs")} className="gap-1 text-brand-600 hover:text-brand-700">
             View All Jobs <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
@@ -108,8 +108,8 @@ export default function Home() {
       {/* Latest Tenders */}
       <section className="mx-auto max-w-6xl px-4 pb-16 sm:px-6 lg:px-8">
         <div className="flex items-end justify-between">
-          <h2 className="font-display text-2xl font-bold tracking-tight text-slate-900">Latest Tenders</h2>
-          <Button variant="ghost" data-testid="view-all-tenders" onClick={() => navigate("/tenders")} className="gap-1 text-orange-600 hover:text-orange-700">
+          <h2 className="font-display text-2xl font-bold tracking-tight text-brand-900">Latest Tenders</h2>
+          <Button variant="ghost" data-testid="view-all-tenders" onClick={() => navigate("/tenders")} className="gap-1 text-brand-600 hover:text-brand-700">
             View All Tenders <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
@@ -125,7 +125,7 @@ export default function Home() {
       {/* Submission CTA */}
       <section className="mx-auto max-w-6xl px-4 pb-20 sm:px-6 lg:px-8">
         <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center sm:p-12">
-          <h2 className="font-display text-2xl font-bold tracking-tight text-slate-900">
+          <h2 className="font-display text-2xl font-bold tracking-tight text-brand-900">
             Have a construction job requirement or tender?
           </h2>
           <p className="mx-auto mt-2 max-w-lg text-slate-500">
@@ -134,7 +134,7 @@ export default function Home() {
           <Button
             data-testid="cta-submit"
             onClick={() => navigate("/submit")}
-            className="mt-6 bg-orange-600 px-8 text-white hover:bg-orange-700 active:scale-95"
+            className="mt-6 bg-brand-600 px-8 text-white hover:bg-brand-700 active:scale-95"
           >
             Submit Requirement
           </Button>

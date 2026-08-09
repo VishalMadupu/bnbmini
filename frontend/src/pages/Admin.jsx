@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
-import { Plus, Pencil, Trash2, CheckCircle2, Archive, Send, XCircle, Eye, HardHat, KeyRound, LogOut } from "lucide-react";
+import { Plus, Pencil, Trash2, CheckCircle2, Archive, Send, XCircle, Eye, KeyRound, LogOut } from "lucide-react";
+import { BrandLogo } from "@/components/BrandLogo";
 import Seo from "@/components/Seo";
 import { FileUpload } from "@/components/FileUpload";
 import { Button } from "@/components/ui/button";
@@ -168,7 +169,7 @@ function Editor({ open, onClose, kind, editing, onSaved }) {
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button data-testid="admin-save-button" onClick={save} disabled={saving} className="bg-orange-600 text-white hover:bg-orange-700">
+          <Button data-testid="admin-save-button" onClick={save} disabled={saving} className="bg-brand-600 text-white hover:bg-brand-700">
             {saving ? "Saving..." : "Save"}
           </Button>
         </DialogFooter>
@@ -218,15 +219,15 @@ function AdminLogin({ onLogin }) {
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
       <form onSubmit={submit} className="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-8">
         <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-md bg-slate-900"><HardHat className="h-4 w-4 text-orange-500" /></span>
-          <span className="font-display text-lg font-bold text-slate-900">BitsNdBricks Admin</span>
+          <span className="flex h-8 w-8 items-center justify-center"><BrandLogo className="h-8 w-8" /></span>
+          <span className="font-display text-lg font-bold text-brand-900">BitsNdBricks Admin</span>
         </div>
         <p className="mt-4 text-sm text-slate-500">Enter the admin password to continue.</p>
         <div className="mt-4">
           <Label className="mb-1.5 block text-sm font-medium text-slate-700">Password</Label>
           <Input data-testid="admin-login-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" autoFocus />
         </div>
-        <Button data-testid="admin-login-button" type="submit" disabled={loading} className="mt-5 w-full gap-2 bg-orange-600 text-white hover:bg-orange-700">
+        <Button data-testid="admin-login-button" type="submit" disabled={loading} className="mt-5 w-full gap-2 bg-brand-600 text-white hover:bg-brand-700">
           <KeyRound className="h-4 w-4" /> {loading ? "Signing in..." : "Sign in"}
         </Button>
       </form>
@@ -327,8 +328,8 @@ export default function Admin() {
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-md bg-slate-900"><HardHat className="h-4 w-4 text-orange-500" /></span>
-            <span className="font-display text-lg font-bold text-slate-900">BitsNdBricks Admin</span>
+            <span className="flex h-8 w-8 items-center justify-center"><BrandLogo className="h-8 w-8" /></span>
+            <span className="font-display text-lg font-bold text-brand-900">BitsNdBricks Admin</span>
           </div>
           <div className="flex items-center gap-4">
             {pendingCount > 0 && (
@@ -336,7 +337,7 @@ export default function Admin() {
                 {pendingCount} pending
               </button>
             )}
-            <a href="/" className="text-sm text-slate-500 hover:text-orange-600">View site →</a>
+            <a href="/" className="text-sm text-slate-500 hover:text-brand-600">View site →</a>
             <button data-testid="admin-logout" onClick={logout} className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-red-600">
               <LogOut className="h-4 w-4" /> Logout
             </button>
@@ -362,7 +363,7 @@ export default function Admin() {
                   {STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <Button data-testid="admin-create-button" onClick={() => { setEditing(null); setEditorOpen(true); }} className="gap-2 bg-orange-600 text-white hover:bg-orange-700">
+              <Button data-testid="admin-create-button" onClick={() => { setEditing(null); setEditorOpen(true); }} className="gap-2 bg-brand-600 text-white hover:bg-brand-700">
                 <Plus className="h-4 w-4" /> Create {kind}
               </Button>
             </div>

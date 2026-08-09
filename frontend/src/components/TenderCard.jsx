@@ -12,7 +12,7 @@ export const TenderCard = ({ tender }) => (
     }`}
   >
     <div className="flex items-start justify-between gap-3">
-      <h3 className="break-words font-display text-lg font-semibold leading-snug tracking-tight text-slate-900 group-hover:text-orange-600">
+      <h3 className="break-words font-display text-lg font-semibold leading-snug tracking-tight text-brand-900 group-hover:text-brand-600">
         {tender.title}
       </h3>
       {tender.verified && <VerifiedBadge />}
@@ -55,7 +55,7 @@ export const TenderCard = ({ tender }) => (
 
     <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
       <span className="flex items-center gap-1 font-mono text-xs text-slate-400"><Hash className="h-3 w-3" />{tender.bnb_id}</span>
-      <span className="inline-flex items-center gap-1 text-sm font-semibold text-orange-600">
+      <span className="inline-flex items-center gap-1 text-sm font-semibold text-brand-600">
         View Tender <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
       </span>
     </div>

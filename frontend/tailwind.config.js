@@ -8,8 +8,8 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', 'sans-serif'],
-        display: ['Outfit', 'Inter', 'sans-serif'],
+        sans: ['Montserrat', 'sans-serif'],
+        display: ['Montserrat', 'sans-serif'],
       },
       borderRadius: {
         lg: 'var(--radius)',
@@ -17,6 +17,18 @@ module.exports = {
         sm: 'calc(var(--radius) - 4px)'
       },
       colors: {
+        brand: {
+          50: '#eef1fb',
+          100: '#dce3f6',
+          200: '#bcc7ee',
+          300: '#8fa1e0',
+          400: '#5f79cf',
+          500: '#3d59b3',
+          600: '#2a4599',
+          700: '#22397e',
+          800: '#1b2c5f',
+          900: '#010822'
+        },
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
         card: {

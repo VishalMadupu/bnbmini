@@ -39,7 +39,7 @@ export default function Legal({ page }) {
     <Layout>
       <Seo title={`${c.title} | BitsNdBricks`} description={c.body[0].slice(0, 150)} />
       <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:px-8">
-        <h1 className="font-display text-3xl font-bold tracking-tight text-slate-900">{c.title}</h1>
+        <h1 className="font-display text-3xl font-bold tracking-tight text-brand-900">{c.title}</h1>
         <div className="mt-6 space-y-4">
           {c.body.map((p, i) => (
             <p key={i} className="leading-relaxed text-slate-600">{p}</p>

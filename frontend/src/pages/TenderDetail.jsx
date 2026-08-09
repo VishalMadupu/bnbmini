@@ -33,8 +33,8 @@ export default function TenderDetail() {
     return (
       <Layout>
         <div className="mx-auto max-w-6xl px-4 py-24 text-center">
-          <h1 className="font-display text-2xl font-bold text-slate-900">Tender not found</h1>
-          <Link to="/tenders"><Button className="mt-6 bg-orange-600 text-white hover:bg-orange-700">Browse all tenders</Button></Link>
+          <h1 className="font-display text-2xl font-bold text-brand-900">Tender not found</h1>
+          <Link to="/tenders"><Button className="mt-6 bg-brand-600 text-white hover:bg-brand-700">Browse all tenders</Button></Link>
         </div>
       </Layout>
     );
@@ -45,14 +45,14 @@ export default function TenderDetail() {
     <Layout>
       <Seo title={`${tender.title} Tender in ${tender.city} | BitsNdBricks`} description={`${tender.title} by ${tender.organization} in ${tender.city}, ${tender.state}. ${tender.description?.slice(0, 140)}`} />
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-        <Link to="/tenders" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-orange-600">
+        <Link to="/tenders" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-brand-600">
           <ArrowLeft className="h-4 w-4" /> Back to Tenders
         </Link>
 
         {/* Header (full width) */}
         <div className="mt-5">
           <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
-            <h1 className="break-words font-display text-2xl font-bold leading-tight tracking-tight text-slate-900 sm:text-3xl">{tender.title}</h1>
+            <h1 className="break-words font-display text-2xl font-bold leading-tight tracking-tight text-brand-900 sm:text-3xl">{tender.title}</h1>
             <div className="flex items-center gap-2">
               {tender.verified && <VerifiedBadge />}
               {tender.is_expired ? (
@@ -73,12 +73,12 @@ export default function TenderDetail() {
         <div className="mt-6 flex flex-col-reverse gap-8 lg:flex-row">
           {/* Main */}
           <div className="lg:w-2/3">
-            <h2 className="font-display text-xl font-semibold text-slate-900">Tender Description</h2>
+            <h2 className="font-display text-xl font-semibold text-brand-900">Tender Description</h2>
             <p className="mt-3 whitespace-pre-line break-words leading-relaxed text-slate-600">{tender.description}</p>
 
             {tender.attachment && (
               <div className="mt-8">
-                <h2 className="font-display text-xl font-semibold text-slate-900">Tender Documents</h2>
+                <h2 className="font-display text-xl font-semibold text-brand-900">Tender Documents</h2>
                 <a href={fileUrl(tender.attachment.url)} target="_blank" rel="noopener noreferrer" data-testid="tender-attachment">
                   <Button variant="outline" className="mt-3 gap-2"><Download className="h-4 w-4" /> Download Tender Document</Button>
                 </a>
@@ -87,7 +87,7 @@ export default function TenderDetail() {
 
             {tender.contact_clarifications && (
               <div className="mt-8">
-                <h2 className="font-display text-xl font-semibold text-slate-900">Contact for Clarifications</h2>
+                <h2 className="font-display text-xl font-semibold text-brand-900">Contact for Clarifications</h2>
                 <p className="mt-3 whitespace-pre-line break-words text-slate-600">{tender.contact_clarifications}</p>
               </div>
             )}
@@ -96,7 +96,7 @@ export default function TenderDetail() {
           {/* Sidebar */}
           <aside className="lg:w-1/3">
             <div className="rounded-lg border border-slate-200 bg-white p-6">
-              <h2 className="font-display text-lg font-semibold text-slate-900">Tender Information</h2>
+              <h2 className="font-display text-lg font-semibold text-brand-900">Tender Information</h2>
               <div className="mt-2 divide-y divide-slate-100">
                 <InfoRow icon={MapPin} label="Location" value={`${tender.city}, ${tender.state}`} />
                 {tender.authority_type && <InfoRow icon={Landmark} label="Authority Type" value={tender.authority_type} />}
@@ -110,9 +110,9 @@ export default function TenderDetail() {
 
               {tender.official_url && (
                 <div className="mt-6 border-t border-slate-100 pt-6">
-                  <h3 className="font-display text-base font-semibold text-slate-900">Official Tender Portal</h3>
+                  <h3 className="font-display text-base font-semibold text-brand-900">Official Tender Portal</h3>
                   <a href={tender.official_url} target="_blank" rel="noopener noreferrer" data-testid="tender-official-portal">
-                    <Button className="mt-3 w-full gap-2 bg-orange-600 py-6 text-white hover:bg-orange-700 active:scale-95">
+                    <Button className="mt-3 w-full gap-2 bg-brand-600 py-6 text-white hover:bg-brand-700 active:scale-95">
                       View / Apply on Official Portal <ExternalLink className="h-4 w-4" />
                     </Button>
                   </a>

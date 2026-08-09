@@ -79,11 +79,11 @@ export default function Submit() {
       <Layout>
         <div className="mx-auto max-w-xl px-4 py-24 text-center">
           <CheckCircle2 className="mx-auto h-14 w-14 text-green-600" />
-          <h1 className="mt-4 font-display text-2xl font-bold text-slate-900">Thank you.</h1>
+          <h1 className="mt-4 font-display text-2xl font-bold text-brand-900">Thank you.</h1>
           <p className="mt-2 text-slate-600" data-testid="submit-success">
             Your requirement has been submitted to BitsNdBricks for review.
           </p>
-          <Button onClick={() => { setForm(empty); setDone(false); }} className="mt-6 bg-orange-600 text-white hover:bg-orange-700">
+          <Button onClick={() => { setForm(empty); setDone(false); }} className="mt-6 bg-brand-600 text-white hover:bg-brand-700">
             Submit another
           </Button>
         </div>
@@ -95,7 +95,7 @@ export default function Submit() {
     <Layout>
       <Seo title="Submit a Construction Opportunity | BitsNdBricks" description="Share a construction job or tender with BitsNdBricks for review." />
       <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6 lg:px-8">
-        <h1 className="font-display text-3xl font-bold tracking-tight text-slate-900">Submit a Construction Opportunity</h1>
+        <h1 className="font-display text-3xl font-bold tracking-tight text-brand-900">Submit a Construction Opportunity</h1>
         <p className="mt-2 text-slate-600">
           Have a construction job requirement or tender? Share it with BitsNdBricks. Our team will
           review the information before publishing. All fields are optional — share whatever you have.
@@ -111,7 +111,7 @@ export default function Submit() {
                 data-testid={`submit-kind-${k}`}
                 onClick={() => setKind(k)}
                 className={`flex-1 rounded-md border px-4 py-2.5 text-sm font-semibold capitalize transition-colors ${
-                  kind === k ? "border-orange-600 bg-orange-50 text-orange-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                  kind === k ? "border-brand-600 bg-brand-50 text-brand-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
                 }`}
               >
                 {k}
@@ -122,7 +122,7 @@ export default function Submit() {
 
         <form onSubmit={submit} className="mt-8 space-y-8">
           <div className="rounded-lg border border-slate-200 bg-white p-6">
-            <h2 className="font-display text-lg font-semibold text-slate-900">
+            <h2 className="font-display text-lg font-semibold text-brand-900">
               {kind === "job" ? "Job Information" : "Tender Information"}
             </h2>
             <div className="mt-4 space-y-4">
@@ -216,7 +216,7 @@ export default function Submit() {
           </div>
 
           <div className="rounded-lg border border-slate-200 bg-white p-6">
-            <h2 className="font-display text-lg font-semibold text-slate-900">Submitter Information</h2>
+            <h2 className="font-display text-lg font-semibold text-brand-900">Submitter Information</h2>
             <p className="mt-1 text-xs text-slate-400">Kept for our reference only, not shown publicly.</p>
             <div className="mt-4 space-y-4">
               <Field label="Your Name">
@@ -231,7 +231,7 @@ export default function Submit() {
             </div>
           </div>
 
-          <Button type="submit" data-testid="submit-button" disabled={submitting} className="w-full bg-orange-600 py-6 text-base font-semibold text-white hover:bg-orange-700 active:scale-95">
+          <Button type="submit" data-testid="submit-button" disabled={submitting} className="w-full bg-brand-600 py-6 text-base font-semibold text-white hover:bg-brand-700 active:scale-95">
             {submitting ? "Submitting..." : kind === "job" ? "Submit Job Requirement" : "Submit Tender"}
           </Button>
         </form>

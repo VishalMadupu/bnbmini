@@ -52,7 +52,7 @@ export default function Jobs() {
     <Layout>
       <Seo title="Construction Jobs in India | BitsNdBricks" description="Browse construction jobs from companies and recruiters across India." />
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
-        <h1 className="font-display text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">Construction Jobs</h1>
+        <h1 className="font-display text-3xl font-bold tracking-tight text-brand-900 sm:text-4xl">Construction Jobs</h1>
 
         <form onSubmit={onSearch} className="mt-6 flex flex-col gap-3 sm:flex-row">
           <div className="relative flex-1">
@@ -65,7 +65,7 @@ export default function Jobs() {
               className="h-12 bg-white pl-11"
             />
           </div>
-          <Button type="submit" data-testid="jobs-search-button" className="h-12 bg-orange-600 px-6 text-white hover:bg-orange-700">Search</Button>
+          <Button type="submit" data-testid="jobs-search-button" className="h-12 bg-brand-600 px-6 text-white hover:bg-brand-700">Search</Button>
         </form>
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
