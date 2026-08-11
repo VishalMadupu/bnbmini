@@ -1,5 +1,6 @@
 """BitsNdBricks Backend API tests - Iteration 2 (admin auth + new fields + sitemap)."""
 import os
+import re
 import io
 import pytest
 import requests
@@ -83,7 +84,7 @@ class TestPublic:
         for f in ["submitter_name", "submitter_email", "source_type", "_id"]:
             assert f not in j
         assert "verified" in j and "is_expired" in j
-        assert j["bnb_id"].startswith("BNB-J-")
+        assert re.match(r"^BNB-\d{6}$", j["bnb_id"])
 
     def test_list_tenders_default_no_expired(self, s):
         r = s.get(f"{API}/tenders")
@@ -99,9 +100,9 @@ class TestPublic:
             assert "is_expired" in t
 
     def test_get_job_by_bnb_id(self, s):
-        r = s.get(f"{API}/jobs/BNB-J-2026-00001")
+        r = s.get(f"{API}/jobs/BNB-000001")
         assert r.status_code == 200
-        assert r.json()["bnb_id"] == "BNB-J-2026-00001"
+        assert r.json()["bnb_id"] == "BNB-000001"
 
 
 # ---- Submissions ----
@@ -111,7 +112,7 @@ class TestSubmissions:
         r = s.post(f"{API}/submissions", json={"kind": "job"})
         assert r.status_code == 200, r.text
         d = r.json()
-        assert d.get("bnb_id", "").startswith("BNB-J-")
+        assert re.match(r"^BNB-\d{6}$", d.get("bnb_id", ""))
         pytest.minimal_bnb = d["bnb_id"]
 
     def test_minimal_submission_hidden_from_public(self, s):
@@ -133,7 +134,7 @@ class TestSubmissions:
     def test_submit_tender_minimal(self, s):
         r = s.post(f"{API}/submissions", json={"kind": "tender"})
         assert r.status_code == 200
-        assert r.json()["bnb_id"].startswith("BNB-T-")
+        assert re.match(r"^BNB-\d{6}$", r.json()["bnb_id"])
 
 
 # ---- New fields (admin) ----
@@ -185,7 +186,7 @@ class TestSitemap:
         for path in ["/jobs", "/tenders", "/submit", "/privacy", "/disclaimer", "/terms"]:
             assert path in body, f"missing {path}"
         # Contains at least one listing url with bnb id
-        assert "bnb-j-" in body.lower() or "BNB-J" in body
+        assert re.search(r"bnb-\d{6}", body.lower())
 
 
 # ---- Upload ----

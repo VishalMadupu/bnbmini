@@ -60,7 +60,19 @@ Build BitsNdBricks Phase 1: a lean, clean, mobile-first construction opportunity
 - **JobDetail**: Apply Now button only renders when `applicant_url` is present (no dead clicks) — verified.
 - Tested: iteration_4 — backend 54/54 pytest pass; frontend 100% of testable flows (Knowledge submit/publish/detail, declaration validation, admin exports, homepage strip, private data isolation).
 
+## Implemented (Enhancement Round — 2026-06-11)
+- **Universal BNB ID**: single continuous sequence `BNB-000001`, `BNB-000002`… shared across ALL 6 modules (atomic `counters.bnb_universal`, never resets). `record_type` stored separately; `origin` = "BNB Created" | "Public Submission". Existing 22 records renumbered via `migrate_ids.py`. IDs/slugs updated everywhere; `ID_REGEX = bnb-\d{6}`.
+- **Consolidated Admin Dashboard** (default tab): per-module summary cards — Public (Total, Pending, Published, Archived, BNB Created, Public Submissions) and Private (Total, New/Pending, Reviewed, Archived) with clickable stat tiles that jump to filtered lists. Backend: `GET /api/admin/stats`.
+- **Admin Complete-Record View**: `FullRecordDialog` shows every stored field, dates, contacts, URLs, arrays, attachments (download), and full rendered rich-text for Knowledge — for all modules.
+- **Private status workflow**: Resume/Vendor rows show Status + Mark-reviewed/Archive actions. Backend: `PATCH /api/admin/resumes|vendors/{id}/status` (new/reviewed/archived).
+- **Knowledge Hub additions**: Content Type (Article / Construction Technology / Industry News), LinkedIn, Profile Picture, private Contact; image captions in editor; exact declaration text. Public shows Content Type badge + author LinkedIn/photo; `author_contact` stripped from public.
+- **Jobs/Tenders UX**: clearer grouping + helper texts; applicant/respondent contact validated as 10-digit Indian mobile OR email when provided.
+- **Vendor**: "All India" option in serviceable locations.
+- **Exports**: all 6 modules; `record_type`/`origin` added; Knowledge adds `content_type`/`linkedin`.
+- Tested: iteration_5 — backend 82/82 pytest pass, frontend 100% of critical flows, no product bugs. Regression suite: `/app/backend/tests/test_universal_bnb.py`.
+
 ## Next Tasks / Backlog
-- **P2**: Vendor Directory — turn approved vendors into a searchable public directory (deferred, user: "later").
-- **P1**: Admin authentication is password-gated for demo; add proper auth when moving beyond demo.
-- Optional a11y: add DialogDescription to Radix dialogs to clear console warnings (non-functional).
+- **P2**: Vendor Directory — searchable public directory of approved vendors (deferred, user: "later").
+- **P1**: Real admin authentication before going live (currently password-gated demo).
+- Refactor: `server.py` (~1160 lines) — consider splitting into routes/models/helpers/exports modules.
+- Optional a11y: add DialogDescription to admin dialogs (non-functional warning).

@@ -110,6 +110,7 @@ body {
     margin: 1rem 0;
 }
 .bnb-prose img { border-radius: 0.5rem; margin: 1rem 0; max-width: 100%; height: auto; }
+.bnb-prose .img-caption { margin-top: -0.5rem; text-align: center; font-size: 0.85rem; color: #64748b; }
 .bnb-prose pre { background: #010822; color: #e2e8f0; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin: 1rem 0; }
 .bnb-prose code { font-family: monospace; font-size: 0.9em; }
 .bnb-prose table { border-collapse: collapse; width: 100%; margin: 1rem 0; display: block; overflow-x: auto; }

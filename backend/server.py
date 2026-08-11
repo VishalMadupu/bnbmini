@@ -157,18 +157,16 @@ def slugify(text: str) -> str:
     return text[:80]
 
 
-async def next_bnb_id(kind: str) -> str:
-    """kind = 'J' or 'T'. Sequential permanent IDs like BNB-J-2026-00001."""
-    year = datetime.now(timezone.utc).year
-    counter_id = f"{kind}-{year}"
+async def next_bnb_id(kind: str = "") -> str:
+    """One continuous universal ID across all modules, e.g. BNB-000001. Never resets.
+    `kind` is accepted for backwards-compatible call sites but no longer affects the ID."""
     doc = await db.counters.find_one_and_update(
-        {"_id": counter_id},
+        {"_id": "bnb_universal"},
         {"$inc": {"seq": 1}},
         upsert=True,
         return_document=True,
     )
-    seq = doc["seq"]
-    return f"BNB-{kind}-{year}-{seq:05d}"
+    return f"BNB-{doc['seq']:06d}"
 
 
 def compute_expiry(last_date: Optional[str], posted_date: str) -> str:
@@ -183,7 +181,7 @@ def build_slug(title: str, city: str, bnb_id: str) -> str:
     return "-".join(parts)
 
 
-ID_REGEX = re.compile(r"(bnb-[jt]-\d{4}-\d{5})", re.IGNORECASE)
+ID_REGEX = re.compile(r"(bnb-\d{6})", re.IGNORECASE)
 
 
 def extract_bnb_id(slug_or_id: str) -> Optional[str]:
@@ -207,7 +205,8 @@ def public_view(doc: dict) -> dict:
     """Strip internal-only fields for public responses."""
     doc = clean(dict(doc))
     for f in ["submitter_name", "submitter_company", "submitter_email",
-              "submitter_phone", "submitter_notes", "submitter_contact", "source_type"]:
+              "submitter_phone", "submitter_notes", "submitter_contact",
+              "source_type", "origin", "author_contact"]:
         doc.pop(f, None)
     doc["verified"] = doc.get("verification_status") == "verified"
     exp = doc.get("expiry_date")
@@ -310,7 +309,7 @@ class SubmissionIn(BaseModel):
 # ---------------- Build doc ----------------
 async def make_job_doc(data: dict) -> dict:
     posted = now_iso()
-    bnb_id = await next_bnb_id("J")
+    bnb_id = await next_bnb_id()
     doc = {
         "id": str(uuid.uuid4()),
         "bnb_id": bnb_id,
@@ -321,12 +320,14 @@ async def make_job_doc(data: dict) -> dict:
         **data,
     }
     doc["slug"] = build_slug(doc["title"], doc["city"], bnb_id)
+    doc["record_type"] = "Job"
+    doc.setdefault("origin", "BNB Created")
     return doc
 
 
 async def make_tender_doc(data: dict) -> dict:
     posted = now_iso()
-    bnb_id = await next_bnb_id("T")
+    bnb_id = await next_bnb_id()
     doc = {
         "id": str(uuid.uuid4()),
         "bnb_id": bnb_id,
@@ -337,6 +338,8 @@ async def make_tender_doc(data: dict) -> dict:
         **data,
     }
     doc["slug"] = build_slug(doc["title"], doc["city"], bnb_id)
+    doc["record_type"] = "Tender"
+    doc.setdefault("origin", "BNB Created")
     return doc
 
 
@@ -438,6 +441,7 @@ async def create_submission(payload: SubmissionIn):
     source_type = "Company Submission"
     common = {
         "source_type": source_type,
+        "origin": "Public Submission",
         "verification_status": "no_badge",
         "status": "pending",
         "submitter_name": data.get("submitter_name"),
@@ -591,6 +595,10 @@ class StatusUpdate(BaseModel):
     verification_status: Optional[VerificationStatus] = None
 
 
+class PrivateStatusUpdate(BaseModel):
+    status: Literal["new", "reviewed", "archived"]
+
+
 @api_router.patch("/admin/jobs/{item_id}/status")
 async def admin_job_status(item_id: str, payload: StatusUpdate):
     upd = {k: v for k, v in payload.model_dump().items() if v is not None}
@@ -740,7 +748,7 @@ async def submit_wr(payload: WorkRequirementSubmit):
     data = payload.model_dump()
     if data.get("contact") and not valid_contact(data["contact"]):
         raise HTTPException(status_code=422, detail="Contact must be a 10-digit mobile number or a valid email")
-    data.update({"source_type": "Company Submission", "verification_status": "no_badge", "status": "pending"})
+    data.update({"source_type": "Company Submission", "origin": "Public Submission", "verification_status": "no_badge", "status": "pending"})
     doc = await make_wr_doc(data)
     await db.work_requirements.insert_one(doc)
     await send_submission_email("work requirement", doc)
@@ -803,8 +811,8 @@ async def submit_resume(payload: ResumeIn):
     data = payload.model_dump()
     if data.get("email") and not EMAIL_RE.match(data["email"]):
         raise HTTPException(status_code=422, detail="Invalid email")
-    bnb_id = await next_bnb_id("R")
-    doc = {"id": str(uuid.uuid4()), "bnb_id": bnb_id, "created_at": now_iso(), "status": "new", **data}
+    bnb_id = await next_bnb_id()
+    doc = {"id": str(uuid.uuid4()), "bnb_id": bnb_id, "record_type": "Resume", "origin": "Public Submission", "created_at": now_iso(), "status": "new", **data}
     await db.resumes.insert_one(doc)
     return {"message": "submitted", "bnb_id": bnb_id}
 
@@ -813,6 +821,15 @@ async def submit_resume(payload: ResumeIn):
 async def admin_list_resumes():
     docs = await db.resumes.find({}).sort("created_at", -1).to_list(2000)
     return [clean(d) for d in docs]
+
+
+@api_router.patch("/admin/resumes/{item_id}/status")
+async def admin_resume_status(item_id: str, payload: PrivateStatusUpdate):
+    upd = {"status": payload.status, "updated_at": now_iso()}
+    res = await db.resumes.update_one({"id": item_id}, {"$set": upd})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    return clean(await db.resumes.find_one({"id": item_id}))
 
 
 @api_router.delete("/admin/resumes/{item_id}")
@@ -827,8 +844,8 @@ async def submit_vendor(payload: VendorIn):
     data = payload.model_dump()
     if data.get("email") and not EMAIL_RE.match(data["email"]):
         raise HTTPException(status_code=422, detail="Invalid email")
-    bnb_id = await next_bnb_id("V")
-    doc = {"id": str(uuid.uuid4()), "bnb_id": bnb_id, "created_at": now_iso(), "status": "new", **data}
+    bnb_id = await next_bnb_id()
+    doc = {"id": str(uuid.uuid4()), "bnb_id": bnb_id, "record_type": "Vendor", "origin": "Public Submission", "created_at": now_iso(), "status": "new", **data}
     await db.vendors.insert_one(doc)
     return {"message": "submitted", "bnb_id": bnb_id}
 
@@ -839,6 +856,15 @@ async def admin_list_vendors():
     return [clean(d) for d in docs]
 
 
+@api_router.patch("/admin/vendors/{item_id}/status")
+async def admin_vendor_status(item_id: str, payload: PrivateStatusUpdate):
+    upd = {"status": payload.status, "updated_at": now_iso()}
+    res = await db.vendors.update_one({"id": item_id}, {"$set": upd})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    return clean(await db.vendors.find_one({"id": item_id}))
+
+
 @api_router.delete("/admin/vendors/{item_id}")
 async def admin_delete_vendor(item_id: str):
     await db.vendors.delete_one({"id": item_id})
@@ -846,7 +872,11 @@ async def admin_delete_vendor(item_id: str):
 
 
 # ---------- Knowledge Hub ----------
+ContentType = Literal["Article", "Construction Technology", "Industry News"]
+
+
 class KnowledgeIn(BaseModel):
+    content_type: ContentType = "Article"
     title: Optional[str] = None
     summary: Optional[str] = None
     content: Optional[str] = None
@@ -856,6 +886,9 @@ class KnowledgeIn(BaseModel):
     attachment: Optional[FileRef] = None
     author_name: Optional[str] = None
     author_info: Optional[str] = None
+    linkedin: Optional[str] = None
+    profile_picture: Optional[FileRef] = None
+    author_contact: Optional[str] = None
     source_type: SourceType = "BNB Research"
     verification_status: VerificationStatus = "no_badge"
     status: ListingStatus = "active"
@@ -863,6 +896,7 @@ class KnowledgeIn(BaseModel):
 
 
 class KnowledgeSubmit(BaseModel):
+    content_type: ContentType = "Article"
     title: Optional[str] = None
     summary: Optional[str] = None
     content: Optional[str] = None
@@ -872,17 +906,22 @@ class KnowledgeSubmit(BaseModel):
     attachment: Optional[FileRef] = None
     author_name: Optional[str] = None
     author_info: Optional[str] = None
+    linkedin: Optional[str] = None
+    profile_picture: Optional[FileRef] = None
+    author_contact: Optional[str] = None
     declaration: bool = False
 
 
 async def make_knowledge_doc(data: dict) -> dict:
     posted = now_iso()
-    bnb_id = await next_bnb_id("K")
+    bnb_id = await next_bnb_id()
     doc = {
         "id": str(uuid.uuid4()), "bnb_id": bnb_id, "posted_date": posted,
         "created_at": posted, "updated_at": posted, **data,
     }
     doc["slug"] = f'{slugify(data.get("title") or "article")}-{bnb_id.lower()}'
+    doc["record_type"] = "Knowledge Hub"
+    doc.setdefault("origin", "BNB Created")
     return doc
 
 
@@ -913,7 +952,7 @@ async def submit_knowledge(payload: KnowledgeSubmit):
         raise HTTPException(status_code=422, detail="Please confirm the declaration before submitting")
     if not (data.get("content") or "").strip():
         raise HTTPException(status_code=422, detail="Please add some content before submitting")
-    data.update({"source_type": "Organization Submission", "verification_status": "no_badge", "status": "pending"})
+    data.update({"source_type": "Organization Submission", "origin": "Public Submission", "verification_status": "no_badge", "status": "pending"})
     doc = await make_knowledge_doc(data)
     await db.knowledge.insert_one(doc)
     await send_submission_email("knowledge article", doc)
@@ -962,26 +1001,58 @@ async def admin_delete_knowledge(item_id: str):
     return {"message": "deleted"}
 
 
+# ---------- Admin Dashboard Stats ----------
+@api_router.get("/admin/stats")
+async def admin_stats():
+    for c in ["jobs", "tenders", "work_requirements"]:
+        await archive_expired(c)
+    public_mods = {"jobs": "jobs", "tenders": "tenders",
+                   "work-requirements": "work_requirements", "knowledge": "knowledge"}
+    private_mods = {"resumes": "resumes", "vendors": "vendors"}
+    out = {"public": {}, "private": {}}
+    for key, coll in public_mods.items():
+        docs = await db[coll].find({}, {"status": 1, "origin": 1, "source_type": 1, "_id": 0}).to_list(100000)
+        def origin_of(d):
+            return d.get("origin") or ("BNB Created" if d.get("source_type") == "BNB Research" else "Public Submission")
+        out["public"][key] = {
+            "total": len(docs),
+            "pending": sum(1 for d in docs if d.get("status") == "pending"),
+            "published": sum(1 for d in docs if d.get("status") == "active"),
+            "archived": sum(1 for d in docs if d.get("status") == "archived"),
+            "bnb_created": sum(1 for d in docs if origin_of(d) == "BNB Created"),
+            "public_submissions": sum(1 for d in docs if origin_of(d) == "Public Submission"),
+        }
+    for key, coll in private_mods.items():
+        docs = await db[coll].find({}, {"status": 1, "_id": 0}).to_list(100000)
+        out["private"][key] = {
+            "total": len(docs),
+            "new_pending": sum(1 for d in docs if d.get("status") in ("new", "pending")),
+            "reviewed": sum(1 for d in docs if d.get("status") in ("reviewed", "active")),
+            "archived": sum(1 for d in docs if d.get("status") == "archived"),
+        }
+    return out
+
+
 # ---------- Excel Export ----------
 EXPORT_COLUMNS = {
-    "jobs": ["bnb_id", "title", "organization", "state", "city", "category", "collar_type", "trade",
+    "jobs": ["bnb_id", "record_type", "origin", "title", "organization", "state", "city", "category", "collar_type", "trade",
              "last_date", "applicant_email", "applicant_phone", "applicant_url", "source_type",
              "verification_status", "status", "posted_date", "submitter_name", "submitter_email",
              "submitter_phone", "submitter_notes"],
-    "tenders": ["bnb_id", "title", "organization", "state", "city", "authority_type", "estimated_value",
+    "tenders": ["bnb_id", "record_type", "origin", "title", "organization", "state", "city", "authority_type", "estimated_value",
                 "original_reference", "official_url", "last_date", "contact_clarifications", "source_type",
                 "verification_status", "status", "posted_date", "submitter_name", "submitter_email",
                 "submitter_phone", "submitter_notes"],
-    "work-requirements": ["bnb_id", "requirement_type", "title", "organization", "state", "city", "quantity",
+    "work-requirements": ["bnb_id", "record_type", "origin", "requirement_type", "title", "organization", "state", "city", "quantity",
                           "required_by", "contact", "source_type", "verification_status", "status",
                           "posted_date", "submitter_name", "submitter_contact", "submitter_notes"],
-    "resumes": ["bnb_id", "full_name", "email", "phone", "location", "preferred_role", "experience",
-                "linkedin", "resume", "other_info", "created_at"],
-    "vendors": ["bnb_id", "company_name", "contact_person", "email", "phone", "website", "reg_state",
+    "resumes": ["bnb_id", "record_type", "full_name", "email", "phone", "location", "preferred_role", "experience",
+                "linkedin", "resume", "other_info", "status", "created_at"],
+    "vendors": ["bnb_id", "record_type", "company_name", "contact_person", "email", "phone", "website", "reg_state",
                 "reg_city", "serviceable_locations", "service_categories", "service_categories_other",
-                "services_description", "brochure", "created_at"],
-    "knowledge": ["bnb_id", "title", "summary", "tags", "author_name", "author_info", "source_url",
-                  "source_type", "verification_status", "status", "posted_date"],
+                "services_description", "brochure", "status", "created_at"],
+    "knowledge": ["bnb_id", "record_type", "origin", "content_type", "title", "summary", "tags", "author_name", "author_info",
+                  "linkedin", "author_contact", "source_url", "source_type", "verification_status", "status", "posted_date"],
 }
 EXPORT_COLL = {"jobs": "jobs", "tenders": "tenders", "work-requirements": "work_requirements",
                "resumes": "resumes", "vendors": "vendors", "knowledge": "knowledge"}
@@ -1086,4 +1157,6 @@ async def startup():
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    client.close()
+def shutdown_db_client():
     client.close()

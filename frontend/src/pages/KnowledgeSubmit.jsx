@@ -9,13 +9,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CONTENT_TYPES } from "@/lib/constants";
 import { api } from "@/lib/api";
 import { isUrl } from "@/lib/validate";
 import { toast } from "sonner";
 
 const empty = {
-  title: "", summary: "", content: "", tagsText: "", source_url: "",
-  cover_image: null, attachment: null, author_name: "", author_info: "", declaration: false,
+  content_type: "Article", title: "", summary: "", content: "", tagsText: "", source_url: "",
+  cover_image: null, attachment: null, author_name: "", author_info: "",
+  linkedin: "", profile_picture: null, author_contact: "", declaration: false,
 };
 
 export default function KnowledgeSubmit() {
@@ -34,10 +37,12 @@ export default function KnowledgeSubmit() {
     try {
       const tags = form.tagsText.split(",").map((t) => t.trim()).filter(Boolean);
       await api.post("/submissions/knowledge", {
-        title: form.title || null, summary: form.summary || null, content: form.content,
+        content_type: form.content_type, title: form.title || null, summary: form.summary || null, content: form.content,
         tags, source_url: form.source_url || null, cover_image: form.cover_image,
         attachment: form.attachment, author_name: form.author_name || null,
-        author_info: form.author_info || null, declaration: form.declaration,
+        author_info: form.author_info || null, linkedin: form.linkedin || null,
+        profile_picture: form.profile_picture, author_contact: form.author_contact || null,
+        declaration: form.declaration,
       });
       setDone(true); window.scrollTo(0, 0);
     } catch (err) { toast.error(err.response?.data?.detail || "Submission failed"); } finally { setSubmitting(false); }
@@ -57,6 +62,12 @@ export default function KnowledgeSubmit() {
         <form onSubmit={submit} className="mt-8 space-y-8">
           <div className="rounded-lg border border-slate-200 bg-white p-6 space-y-4">
             <h2 className="font-display text-lg font-semibold text-brand-900">Article</h2>
+            <Field label="Content Type">
+              <Select value={form.content_type} onValueChange={(v) => set("content_type", v)}>
+                <SelectTrigger data-testid="knowledge-field-contenttype"><SelectValue /></SelectTrigger>
+                <SelectContent>{CONTENT_TYPES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field>
             <Field label="Title"><Input data-testid="knowledge-field-title" placeholder="e.g. Understanding GST for Construction Contractors" value={form.title} onChange={(e) => set("title", e.target.value)} /></Field>
             <Field label="Short Summary" hint="A one or two line preview shown on cards."><Textarea data-testid="knowledge-field-summary" rows={2} value={form.summary} onChange={(e) => set("summary", e.target.value)} /></Field>
             <Field label="Content" hint="You can paste formatted text directly from Word or Google Docs, and add images, links and tables.">
@@ -67,18 +78,23 @@ export default function KnowledgeSubmit() {
               <FileUpload label="Cover Image (optional)" value={form.cover_image} onChange={(v) => set("cover_image", v)} testid="knowledge-field-cover" />
               <FileUpload label="Attachment (optional)" value={form.attachment} onChange={(v) => set("attachment", v)} testid="knowledge-field-attachment" />
             </div>
-            <Field label="Source URL (optional)" hint="If this is based on or references an external source."><Input data-testid="knowledge-field-source" placeholder="https://example.com/article" value={form.source_url} onChange={(e) => set("source_url", e.target.value)} /></Field>
+            <Field label="Source URL (optional)" hint="Provide the original source when the content is based on or referenced from another source."><Input data-testid="knowledge-field-source" placeholder="https://example.com/article" value={form.source_url} onChange={(e) => set("source_url", e.target.value)} /></Field>
           </div>
 
           <div className="rounded-lg border border-slate-200 bg-white p-6 space-y-4">
             <h2 className="font-display text-lg font-semibold text-brand-900">Author</h2>
-            <Field label="Author Name"><Input data-testid="knowledge-field-author" placeholder="e.g. Rajesh Kumar" value={form.author_name} onChange={(e) => set("author_name", e.target.value)} /></Field>
+            <Field label="Author / Contributor Name"><Input data-testid="knowledge-field-author" placeholder="e.g. Rajesh Kumar" value={form.author_name} onChange={(e) => set("author_name", e.target.value)} /></Field>
             <Field label="About the Author"><Textarea data-testid="knowledge-field-authorinfo" rows={2} placeholder="e.g. Civil engineer with 12 years in infrastructure projects." value={form.author_info} onChange={(e) => set("author_info", e.target.value)} /></Field>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="LinkedIn Profile"><Input data-testid="knowledge-field-linkedin" placeholder="https://linkedin.com/in/yourname" value={form.linkedin} onChange={(e) => set("linkedin", e.target.value)} /></Field>
+              <Field label="Contact" hint="Not shown publicly."><Input data-testid="knowledge-field-contact" placeholder="Email or phone" value={form.author_contact} onChange={(e) => set("author_contact", e.target.value)} /></Field>
+            </div>
+            <FileUpload label="Profile Picture (optional)" value={form.profile_picture} onChange={(v) => set("profile_picture", v)} testid="knowledge-field-profilepic" />
           </div>
 
           <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-600">
             <Checkbox data-testid="knowledge-declaration" checked={form.declaration} onCheckedChange={(c) => set("declaration", !!c)} className="mt-0.5" />
-            <span>I confirm this content is original or that I have the right to share it, and that it does not infringe any copyright. I understand BitsNdBricks will review it before publishing.</span>
+            <span>I confirm that the content submitted by me is my own work or that I have the right/permission to submit and share it. I take responsibility for the content and materials uploaded by me.</span>
           </label>
 
           <Button type="submit" data-testid="knowledge-submit-button" disabled={submitting} className="w-full bg-brand-600 py-6 text-base font-semibold text-white hover:bg-brand-700">{submitting ? "Submitting..." : "Submit Article"}</Button>

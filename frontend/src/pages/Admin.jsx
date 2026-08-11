@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from "react";
-import { Plus, Pencil, Trash2, CheckCircle2, Archive, Send, XCircle, Eye, KeyRound, LogOut, Download } from "lucide-react";
+import { Plus, Pencil, Trash2, CheckCircle2, Archive, Send, XCircle, Eye, KeyRound, LogOut, Download, LayoutDashboard, ExternalLink, ClipboardCheck } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { isValidContact } from "@/lib/validate";
 import Seo from "@/components/Seo";
 import { FileUpload } from "@/components/FileUpload";
 import { RichTextEditor } from "@/components/RichTextEditor";
+import { RichContent } from "@/components/RichContent";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,7 +20,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { api, API, fileUrl } from "@/lib/api";
-import { INDIAN_STATES, SOURCE_TYPES, VERIFICATION_OPTIONS, STATUS_OPTIONS, COLLAR_TYPES, AUTHORITY_TYPES, REQUIREMENT_TYPES } from "@/lib/constants";
+import { INDIAN_STATES, SOURCE_TYPES, VERIFICATION_OPTIONS, STATUS_OPTIONS, COLLAR_TYPES, AUTHORITY_TYPES, REQUIREMENT_TYPES, CONTENT_TYPES } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
 import { toast } from "sonner";
 
@@ -29,6 +30,8 @@ const statusColor = {
   draft: "bg-slate-100 text-slate-700",
   archived: "bg-slate-200 text-slate-600",
   rejected: "bg-red-100 text-red-700",
+  new: "bg-amber-100 text-amber-800",
+  reviewed: "bg-green-100 text-green-800",
 };
 
 const emptyForm = {
@@ -205,8 +208,9 @@ function Editor({ open, onClose, kind, editing, onSaved }) {
 
 function KnowledgeEditor({ open, onClose, editing, onSaved }) {
   const kEmpty = {
-    title: "", summary: "", content: "", tagsText: "", source_url: "",
+    content_type: "Article", title: "", summary: "", content: "", tagsText: "", source_url: "",
     cover_image: null, attachment: null, author_name: "", author_info: "",
+    linkedin: "", profile_picture: null, author_contact: "",
     source_type: "BNB Research", verification_status: "no_badge", status: "active",
   };
   const [form, setForm] = useState(kEmpty);
@@ -227,10 +231,12 @@ function KnowledgeEditor({ open, onClose, editing, onSaved }) {
     try {
       const tags = form.tagsText.split(",").map((t) => t.trim()).filter(Boolean);
       const payload = {
-        title: form.title || null, summary: form.summary || null, content: form.content || null,
+        content_type: form.content_type, title: form.title || null, summary: form.summary || null, content: form.content || null,
         tags, source_url: form.source_url || null, cover_image: form.cover_image,
         attachment: form.attachment, author_name: form.author_name || null,
-        author_info: form.author_info || null, source_type: form.source_type,
+        author_info: form.author_info || null, linkedin: form.linkedin || null,
+        profile_picture: form.profile_picture, author_contact: form.author_contact || null,
+        source_type: form.source_type,
         verification_status: form.verification_status, status: form.status, declaration: true,
       };
       if (editing) {
@@ -254,10 +260,18 @@ function KnowledgeEditor({ open, onClose, editing, onSaved }) {
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader><DialogTitle className="font-display">{editing ? "Edit article" : "Create article"}</DialogTitle></DialogHeader>
         <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Content Type">
+              <Select value={form.content_type} onValueChange={(v) => set("content_type", v)}>
+                <SelectTrigger data-testid="kadmin-field-contenttype"><SelectValue /></SelectTrigger>
+                <SelectContent>{CONTENT_TYPES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field>
+            <Field label="Tags (comma-separated)"><Input data-testid="kadmin-field-tags" placeholder="Regulations, Safety" value={form.tagsText} onChange={(e) => set("tagsText", e.target.value)} /></Field>
+          </div>
           <Field label="Title"><Input data-testid="kadmin-field-title" value={form.title} onChange={(e) => set("title", e.target.value)} /></Field>
           <Field label="Summary"><Textarea data-testid="kadmin-field-summary" rows={2} value={form.summary} onChange={(e) => set("summary", e.target.value)} /></Field>
           <Field label="Content"><RichTextEditor value={form.content} onChange={(v) => set("content", v)} testid="kadmin-editor" /></Field>
-          <Field label="Tags (comma-separated)"><Input data-testid="kadmin-field-tags" placeholder="Regulations, Safety" value={form.tagsText} onChange={(e) => set("tagsText", e.target.value)} /></Field>
           <div className="grid grid-cols-2 gap-3">
             <FileUpload label="Cover image" value={form.cover_image} onChange={(v) => set("cover_image", v)} testid="kadmin-field-cover" />
             <FileUpload label="Attachment" value={form.attachment} onChange={(v) => set("attachment", v)} testid="kadmin-field-attachment" />
@@ -265,7 +279,12 @@ function KnowledgeEditor({ open, onClose, editing, onSaved }) {
           <Field label="Source URL"><Input data-testid="kadmin-field-source" value={form.source_url} onChange={(e) => set("source_url", e.target.value)} /></Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Author name"><Input value={form.author_name} onChange={(e) => set("author_name", e.target.value)} /></Field>
-            <Field label="Author info"><Input value={form.author_info} onChange={(e) => set("author_info", e.target.value)} /></Field>
+            <Field label="LinkedIn"><Input data-testid="kadmin-field-linkedin" value={form.linkedin} onChange={(e) => set("linkedin", e.target.value)} /></Field>
+          </div>
+          <Field label="Author info"><Input value={form.author_info} onChange={(e) => set("author_info", e.target.value)} /></Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Author contact (private)"><Input data-testid="kadmin-field-contact" value={form.author_contact} onChange={(e) => set("author_contact", e.target.value)} /></Field>
+            <FileUpload label="Profile picture" value={form.profile_picture} onChange={(v) => set("profile_picture", v)} testid="kadmin-field-profilepic" />
           </div>
           <div className="grid grid-cols-3 gap-3 border-t border-slate-100 pt-4">
             <Field label="Source type">
@@ -297,22 +316,137 @@ function KnowledgeEditor({ open, onClose, editing, onSaved }) {
   );
 }
 
-function SubmitterDialog({ item, onClose }) {
+const RECORD_FILE_KEYS = ["attachment", "resume", "brochure", "cover_image", "profile_picture"];
+const RECORD_HIDE = ["_id", "id", "_type", "slug", "content", "declaration"];
+const humanize = (k) => k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+const fmtVal = (v) => {
+  if (v === null || v === undefined || v === "") return "—";
+  if (Array.isArray(v)) return v.length ? v.join(", ") : "—";
+  if (typeof v === "boolean") return v ? "Yes" : "No";
+  return String(v);
+};
+
+function FullRecordDialog({ item, onClose }) {
   if (!item) return null;
+  const isKnowledge = item.record_type === "Knowledge Hub" || item._type === "knowledge";
+  const entries = Object.entries(item).filter(
+    ([k, v]) => !RECORD_HIDE.includes(k) && !RECORD_FILE_KEYS.includes(k) && !(v && typeof v === "object" && !Array.isArray(v))
+  );
+  const files = RECORD_FILE_KEYS.filter((k) => item[k]);
   return (
     <Dialog open={!!item} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle className="font-display">Submitter Information</DialogTitle></DialogHeader>
-        <div className="space-y-2 text-sm">
-          <div><span className="text-slate-400">Name: </span>{item.submitter_name || "—"}</div>
-          <div><span className="text-slate-400">Company: </span>{item.submitter_company || "—"}</div>
-          <div><span className="text-slate-400">Email: </span>{item.submitter_email || "—"}</div>
-          <div><span className="text-slate-400">Phone: </span>{item.submitter_phone || "—"}</div>
-          <div><span className="text-slate-400">Notes: </span>{item.submitter_notes || "—"}</div>
-          <div className="border-t border-slate-100 pt-2"><span className="text-slate-400">Source type: </span>{item.source_type}</div>
+      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto" data-testid="admin-full-record">
+        <DialogHeader>
+          <DialogTitle className="flex flex-wrap items-center gap-2 font-display">
+            <span className="font-mono text-base text-brand-600">{item.bnb_id}</span>
+            {item.record_type && <Badge className="bg-brand-900 text-white">{item.record_type}</Badge>}
+            {item.status && <Badge className={`${statusColor[item.status] || "bg-slate-100"} capitalize`}>{item.status}</Badge>}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+          {entries.map(([k, v]) => (
+            <div key={k} className="break-words border-b border-slate-100 py-1.5">
+              <span className="text-xs uppercase tracking-wide text-slate-400">{humanize(k)}</span>
+              <div className="text-slate-800">{fmtVal(v)}</div>
+            </div>
+          ))}
         </div>
+
+        {isKnowledge && item.content && (
+          <div className="mt-4 border-t border-slate-200 pt-4">
+            <h4 className="mb-2 font-display text-sm font-semibold text-brand-900">Full Content</h4>
+            <div className="rounded-lg border border-slate-200 bg-white p-4">
+              <RichContent html={item.content} />
+            </div>
+          </div>
+        )}
+
+        {files.length > 0 && (
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-200 pt-4">
+            {files.map((k) => (
+              <a key={k} href={fileUrl(item[k].url)} target="_blank" rel="noopener noreferrer" data-testid={`record-file-${k}`}>
+                <Button variant="outline" size="sm" className="gap-2"><Download className="h-4 w-4" /> {humanize(k)} ({item[k].filename})</Button>
+              </a>
+            ))}
+          </div>
+        )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+const PUBLIC_MODS = [
+  { key: "jobs", label: "Jobs", kind: "job" },
+  { key: "tenders", label: "Tenders", kind: "tender" },
+  { key: "work-requirements", label: "Work Requirements", kind: "workrequirement" },
+  { key: "knowledge", label: "Knowledge Hub", kind: "knowledge" },
+];
+const PRIVATE_MODS = [
+  { key: "resumes", label: "Resumes", kind: "resume" },
+  { key: "vendors", label: "Vendors", kind: "vendor" },
+];
+
+function StatTile({ value, label, onClick, accent }) {
+  return (
+    <button type="button" onClick={onClick} data-testid={`stat-${label.toLowerCase().replace(/[^a-z]+/g, "-")}`}
+      className="flex flex-col items-start rounded-md border border-slate-200 bg-white px-3 py-2 text-left transition-colors hover:border-brand-300 hover:bg-brand-50">
+      <span className={`text-xl font-bold ${accent || "text-brand-900"}`}>{value ?? 0}</span>
+      <span className="text-xs text-slate-500">{label}</span>
+    </button>
+  );
+}
+
+function DashboardPanel({ stats, onJump }) {
+  if (!stats) return <p className="mt-6 text-sm text-slate-400">Loading dashboard...</p>;
+  return (
+    <div className="mt-6 space-y-8" data-testid="admin-dashboard-panel">
+      <div>
+        <h2 className="mb-3 font-display text-lg font-semibold text-brand-900">Public Content</h2>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {PUBLIC_MODS.map((m) => {
+            const s = stats.public?.[m.key] || {};
+            return (
+              <div key={m.key} className="rounded-lg border border-slate-200 bg-white p-5" data-testid={`dashboard-card-${m.key}`}>
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="font-display font-semibold text-brand-900">{m.label}</h3>
+                  <button onClick={() => onJump(m.kind, "all")} className="text-xs font-semibold text-brand-600 hover:text-brand-700">View all ({s.total ?? 0}) →</button>
+                </div>
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+                  <StatTile value={s.pending} label="Pending" accent="text-amber-600" onClick={() => onJump(m.kind, "pending")} />
+                  <StatTile value={s.published} label="Published" accent="text-green-600" onClick={() => onJump(m.kind, "active")} />
+                  <StatTile value={s.archived} label="Archived" accent="text-slate-500" onClick={() => onJump(m.kind, "archived")} />
+                  <StatTile value={s.bnb_created} label="BNB Created" onClick={() => onJump(m.kind, "all")} />
+                  <StatTile value={s.public_submissions} label="Public Submissions" onClick={() => onJump(m.kind, "all")} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <h2 className="mb-3 font-display text-lg font-semibold text-brand-900">Private Submissions</h2>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {PRIVATE_MODS.map((m) => {
+            const s = stats.private?.[m.key] || {};
+            return (
+              <div key={m.key} className="rounded-lg border border-slate-200 bg-white p-5" data-testid={`dashboard-card-${m.key}`}>
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="font-display font-semibold text-brand-900">{m.label}</h3>
+                  <button onClick={() => onJump(m.kind, "all")} className="text-xs font-semibold text-brand-600 hover:text-brand-700">View all ({s.total ?? 0}) →</button>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <StatTile value={s.new_pending} label="New/Pending" accent="text-amber-600" onClick={() => onJump(m.kind, "all")} />
+                  <StatTile value={s.reviewed} label="Reviewed" accent="text-green-600" onClick={() => onJump(m.kind, "all")} />
+                  <StatTile value={s.archived} label="Archived" accent="text-slate-500" onClick={() => onJump(m.kind, "all")} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -356,16 +490,16 @@ function AdminLogin({ onLogin }) {
 
 export default function Admin() {
   const [token, setToken] = useState(() => localStorage.getItem("bnb_admin_token"));
-  const [kind, setKind] = useState("job");
+  const [kind, setKind] = useState("dashboard");
   const [statusFilter, setStatusFilter] = useState("all");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [submitter, setSubmitter] = useState(null);
   const [pendingCount, setPendingCount] = useState(0);
   const [selected, setSelected] = useState(() => new Set());
   const [detail, setDetail] = useState(null);
+  const [stats, setStats] = useState(null);
   const [kEditorOpen, setKEditorOpen] = useState(false);
   const [kEditing, setKEditing] = useState(null);
 
@@ -406,6 +540,7 @@ export default function Admin() {
   };
 
   const load = useCallback(async () => {
+    if (kind === "dashboard") { setLoading(false); return; }
     setLoading(true);
     try {
       if (kind === "inbox") {
@@ -447,6 +582,11 @@ export default function Admin() {
 
   useEffect(() => { if (token) refreshCounts(); }, [token, refreshCounts]);
 
+  const loadStats = useCallback(async () => {
+    try { const { data } = await api.get("/admin/stats"); setStats(data); } catch (e) { /* ignore */ }
+  }, []);
+  useEffect(() => { if (token) loadStats(); }, [token, kind, loadStats]);
+
   if (!token) return <AdminLogin onLogin={setToken} />;
 
   const patch = async (id, body, rowKind) => {
@@ -454,7 +594,17 @@ export default function Admin() {
     toast.success("Updated");
     load();
     refreshCounts();
+    loadStats();
   };
+
+  const patchPrivate = async (id, status) => {
+    await api.patch(`/admin/${kindPath(kind)}/${id}/status`, { status });
+    toast.success("Updated");
+    load();
+    loadStats();
+  };
+
+  const jump = (k, status) => { setKind(k); setStatusFilter(status || "all"); clearSel(); };
 
   const remove = async (id, rowKind) => {
     if (!window.confirm("Delete this record permanently?")) return;
@@ -462,6 +612,7 @@ export default function Admin() {
     toast.success("Deleted");
     load();
     refreshCounts();
+    loadStats();
   };
 
   const toggleSel = (id) => setSelected((prev) => {
@@ -506,6 +657,7 @@ export default function Admin() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <Tabs value={kind} onValueChange={(v) => { setKind(v); clearSel(); }}>
             <TabsList>
+              <TabsTrigger value="dashboard" data-testid="admin-tab-dashboard">Dashboard</TabsTrigger>
               <TabsTrigger value="job" data-testid="admin-tab-jobs">Jobs</TabsTrigger>
               <TabsTrigger value="tender" data-testid="admin-tab-tenders">Tenders</TabsTrigger>
               <TabsTrigger value="workrequirement" data-testid="admin-tab-wr">Work Req.</TabsTrigger>
@@ -516,7 +668,7 @@ export default function Admin() {
             </TabsList>
           </Tabs>
           <div className="flex items-center gap-3">
-            {!isPrivate && kind !== "inbox" && (
+            {kind !== "dashboard" && !isPrivate && kind !== "inbox" && (
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger data-testid="admin-status-filter" className="w-40 bg-white"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -525,9 +677,11 @@ export default function Admin() {
                 </SelectContent>
               </Select>
             )}
-            <Button variant="outline" data-testid="admin-export-button" onClick={doExport} className="gap-2">
-              <Download className="h-4 w-4" /> Export Excel
-            </Button>
+            {kind !== "dashboard" && (
+              <Button variant="outline" data-testid="admin-export-button" onClick={doExport} className="gap-2">
+                <Download className="h-4 w-4" /> Export Excel
+              </Button>
+            )}
             {!isPrivate && kind !== "inbox" && (
               <Button data-testid="admin-create-button" onClick={openCreate} className="gap-2 bg-brand-600 text-white hover:bg-brand-700">
                 <Plus className="h-4 w-4" /> Create
@@ -543,7 +697,9 @@ export default function Admin() {
           <p className="mt-4 text-sm text-slate-500">Private {kind === "resume" ? "resume" : "vendor"} submissions — not shown publicly.</p>
         )}
 
-        {isPrivate ? (
+        {kind === "dashboard" ? (
+          <DashboardPanel stats={stats} onJump={jump} />
+        ) : isPrivate ? (
           <div className="mt-6 overflow-x-auto rounded-lg border border-slate-200 bg-white">
             <table className="w-full min-w-[720px] text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-400">
@@ -552,23 +708,31 @@ export default function Admin() {
                   <th className="px-4 py-3">{kind === "resume" ? "Name" : "Company"}</th>
                   <th className="px-4 py-3 hidden sm:table-cell">Contact</th>
                   <th className="px-4 py-3 hidden lg:table-cell">{kind === "resume" ? "Role" : "Reg. State"}</th>
+                  <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
-                  <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-400">Loading...</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-400">Loading...</td></tr>
                 ) : items.length === 0 ? (
-                  <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-400">No {kind === "resume" ? "resumes" : "vendors"} yet.</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-400">No {kind === "resume" ? "resumes" : "vendors"} yet.</td></tr>
                 ) : items.map((it) => (
                   <tr key={it.id} data-testid={`admin-row-${it.bnb_id}`} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-mono text-xs text-slate-500">{it.bnb_id}</td>
                     <td className="px-4 py-3 font-medium text-slate-800">{kind === "resume" ? it.full_name : it.company_name}</td>
                     <td className="px-4 py-3 hidden sm:table-cell text-slate-500">{it.email || it.phone || "—"}</td>
                     <td className="px-4 py-3 hidden lg:table-cell text-slate-500">{kind === "resume" ? (it.preferred_role || "—") : (it.reg_state || "—")}</td>
+                    <td className="px-4 py-3"><Badge className={`${statusColor[it.status] || "bg-slate-100 text-slate-700"} capitalize`}>{it.status || "new"}</Badge></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <button title="View" data-testid={`admin-view-${it.bnb_id}`} onClick={() => setDetail(it)} className="rounded p-1.5 text-slate-500 hover:bg-slate-100"><Eye className="h-4 w-4" /></button>
+                        <button title="View full record" data-testid={`admin-view-${it.bnb_id}`} onClick={() => setDetail(it)} className="rounded p-1.5 text-slate-500 hover:bg-slate-100"><Eye className="h-4 w-4" /></button>
+                        {it.status !== "reviewed" && (
+                          <button title="Mark reviewed" data-testid={`admin-reviewed-${it.bnb_id}`} onClick={() => patchPrivate(it.id, "reviewed")} className="rounded p-1.5 text-green-600 hover:bg-green-50"><ClipboardCheck className="h-4 w-4" /></button>
+                        )}
+                        {it.status !== "archived" && (
+                          <button title="Archive" data-testid={`admin-archive-${it.bnb_id}`} onClick={() => patchPrivate(it.id, "archived")} className="rounded p-1.5 text-slate-500 hover:bg-slate-100"><Archive className="h-4 w-4" /></button>
+                        )}
                         <button title="Delete" data-testid={`admin-delete-${it.bnb_id}`} onClick={() => remove(it.id, kind)} className="rounded p-1.5 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
                       </div>
                     </td>
@@ -629,7 +793,7 @@ export default function Admin() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
-                      <button title="View submitter" data-testid={`admin-submitter-${it.bnb_id}`} onClick={() => setSubmitter(it)} className="rounded p-1.5 text-slate-500 hover:bg-slate-100"><Eye className="h-4 w-4" /></button>
+                      <button title="View full record" data-testid={`admin-submitter-${it.bnb_id}`} onClick={() => setDetail(it)} className="rounded p-1.5 text-slate-500 hover:bg-slate-100"><Eye className="h-4 w-4" /></button>
                       <button title="Edit" data-testid={`admin-edit-${it.bnb_id}`} onClick={() => openEdit(it)} className="rounded p-1.5 text-slate-500 hover:bg-slate-100"><Pencil className="h-4 w-4" /></button>
                       {it.status !== "active" && (
                         <button title="Approve & publish" data-testid={`admin-publish-${it.bnb_id}`} onClick={() => patch(it.id, { status: "active" }, it._type)} className="rounded p-1.5 text-green-600 hover:bg-green-50"><Send className="h-4 w-4" /></button>
@@ -655,22 +819,10 @@ export default function Admin() {
         )}
       </div>
 
-      <Dialog open={!!detail} onOpenChange={() => setDetail(null)}>
-        <DialogContent className="max-h-[85vh] max-w-md overflow-y-auto">
-          <DialogHeader><DialogTitle className="font-display">{detail?.bnb_id}</DialogTitle></DialogHeader>
-          <div className="space-y-1.5 text-sm">
-            {detail && Object.entries(detail).filter(([k]) => !["_id", "id", "_type", "slug", "declaration", "status", "resume", "brochure"].includes(k)).map(([k, v]) => (
-              <div key={k}><span className="text-slate-400">{k}: </span><span className="break-words text-slate-700">{Array.isArray(v) ? v.join(", ") : (v && typeof v === "object") ? (v.filename || v.url) : (v === null || v === "" ? "—" : String(v))}</span></div>
-            ))}
-            {detail?.resume && <a href={fileUrl(detail.resume.url)} target="_blank" rel="noopener noreferrer" className="font-medium text-brand-600 underline">Download resume ({detail.resume.filename})</a>}
-            {detail?.brochure && <a href={fileUrl(detail.brochure.url)} target="_blank" rel="noopener noreferrer" className="font-medium text-brand-600 underline">Download brochure ({detail.brochure.filename})</a>}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <FullRecordDialog item={detail} onClose={() => setDetail(null)} />
 
       <Editor open={editorOpen} onClose={() => setEditorOpen(false)} kind={kind === "inbox" ? (editing?._type || "job") : kind} editing={editing} onSaved={load} />
       <KnowledgeEditor open={kEditorOpen} onClose={() => setKEditorOpen(false)} editing={kEditing} onSaved={load} />
-      <SubmitterDialog item={submitter} onClose={() => setSubmitter(null)} />
     </div>
   );
 }

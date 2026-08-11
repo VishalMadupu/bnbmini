@@ -1,5 +1,6 @@
 """Phase-2 backend tests: Knowledge Hub + WR + Resume/Vendor privacy + Excel exports."""
 import os
+import re
 import pytest
 import requests
 
@@ -59,7 +60,7 @@ class TestKnowledgeSubmit:
         })
         assert r.status_code == 200, r.text
         d = r.json()
-        assert d["bnb_id"].startswith("BNB-K-2026-"), d
+        assert re.match(r"^BNB-\d{6}$", d["bnb_id"]), d
         STATE["kh_bnb"] = d["bnb_id"]
 
     def test_pending_not_public(self, s):
@@ -109,7 +110,7 @@ class TestKnowledgeAdmin:
         })
         assert r.status_code == 200
         d = r.json()
-        assert d["bnb_id"].startswith("BNB-K-")
+        assert re.match(r"^BNB-\d{6}$", d["bnb_id"])
         STATE["kh_admin_id"] = d["id"]
         # visible publicly since active
         listing = s_public().get(f"{API}/knowledge").json()
@@ -140,7 +141,7 @@ class TestWorkRequirements:
         })
         assert r.status_code == 200
         d = r.json()
-        assert d["bnb_id"].startswith("BNB-WR-")
+        assert re.match(r"^BNB-\d{6}$", d["bnb_id"])
         STATE["wr_bnb"] = d["bnb_id"]
 
     def test_submit_ok_with_email(self, s):
@@ -194,7 +195,7 @@ class TestResumePrivacy:
         })
         assert r.status_code == 200
         STATE["resume_bnb"] = r.json()["bnb_id"]
-        assert STATE["resume_bnb"].startswith("BNB-R-")
+        assert re.match(r"^BNB-\d{6}$", STATE["resume_bnb"])
 
     def test_resume_not_public_endpoints(self, s):
         # No GET /resumes public endpoint
@@ -220,7 +221,7 @@ class TestVendorPrivacy:
         })
         assert r.status_code == 200
         STATE["vendor_bnb"] = r.json()["bnb_id"]
-        assert STATE["vendor_bnb"].startswith("BNB-V-")
+        assert re.match(r"^BNB-\d{6}$", STATE["vendor_bnb"])
 
     def test_vendor_not_public_endpoints(self, s):
         r = s.get(f"{API}/vendors")

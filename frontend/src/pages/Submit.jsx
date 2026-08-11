@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { INDIAN_STATES, COLLAR_TYPES, AUTHORITY_TYPES } from "@/lib/constants";
+import { isValidContact } from "@/lib/validate";
 import { toast } from "sonner";
 
 const Field = ({ label, hint, children }) => (
@@ -41,6 +42,14 @@ export default function Submit() {
 
   const submit = async (e) => {
     e.preventDefault();
+    if (kind === "job" && form.applicant_contact && !isValidContact(form.applicant_contact)) {
+      toast.error("Applicant contact must be a 10-digit mobile number or a valid email");
+      return;
+    }
+    if (kind === "tender" && form.contact_clarifications && !isValidContact(form.contact_clarifications)) {
+      toast.error("Contact for clarifications must be a 10-digit mobile number or a valid email");
+      return;
+    }
     setSubmitting(true);
     try {
       await api.post("/submissions", {
@@ -189,8 +198,8 @@ export default function Submit() {
                     <Field label="Last Date to Apply">
                       <Input data-testid="field-lastdate" type="date" value={form.last_date} onChange={(e) => set("last_date", e.target.value)} />
                     </Field>
-                    <Field label="Contact for Applicant" hint="Who should applicants contact or send their details to?">
-                      <Input data-testid="field-applicant-contact" placeholder="Phone, email, WhatsApp or other contact for applicants" value={form.applicant_contact} onChange={(e) => set("applicant_contact", e.target.value)} />
+                    <Field label="Contact for Applicant" hint="Enter a 10-digit Indian mobile number or an email address applicants can use.">
+                      <Input data-testid="field-applicant-contact" placeholder="e.g. 9876543210 or hr@company.com" value={form.applicant_contact} onChange={(e) => set("applicant_contact", e.target.value)} />
                     </Field>
                   </div>
                   <Field label="Applicant URL">
@@ -205,8 +214,8 @@ export default function Submit() {
                   <Field label="Official Tender / Apply URL">
                     <Input data-testid="field-official-url" placeholder="https://example.gov.in/tender/..." value={form.official_url} onChange={(e) => set("official_url", e.target.value)} />
                   </Field>
-                  <Field label="Contact for Clarifications">
-                    <Input data-testid="field-contact" placeholder="Phone, email or contact details for tender clarifications" value={form.contact_clarifications} onChange={(e) => set("contact_clarifications", e.target.value)} />
+                  <Field label="Contact for Clarifications" hint="Enter a 10-digit Indian mobile number or an email address for tender clarifications.">
+                    <Input data-testid="field-contact" placeholder="e.g. 9876543210 or tenders@authority.gov.in" value={form.contact_clarifications} onChange={(e) => set("contact_clarifications", e.target.value)} />
                   </Field>
                 </>
               )}

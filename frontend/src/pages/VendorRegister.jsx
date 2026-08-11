@@ -74,6 +74,9 @@ export default function VendorRegister() {
             </div>
             <Field label="Serviceable Locations" hint="Select all states/UTs where you provide your products or services.">
               <div data-testid="vendor-serviceable" className="max-h-48 overflow-y-auto rounded-md border border-slate-200 p-3">
+                <label className="mb-2 flex items-center gap-2 border-b border-slate-100 pb-2 text-sm font-semibold text-brand-700">
+                  <Checkbox data-testid="vendor-serviceable-allindia" checked={form.serviceable_locations.includes("All India")} onCheckedChange={() => toggleArr("serviceable_locations", "All India")} /> All India
+                </label>
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                   {INDIAN_STATES.map((s) => (
                     <label key={s} className="flex items-center gap-2 text-sm text-slate-600">

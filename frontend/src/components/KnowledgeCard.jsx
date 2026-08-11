@@ -15,13 +15,14 @@ export const KnowledgeCard = ({ item }) => (
       </div>
     )}
     <div className="flex flex-1 flex-col p-6">
-      {item.tags?.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-1.5">
-          {item.tags.slice(0, 3).map((t) => (
-            <span key={t} className="inline-flex items-center rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-semibold text-brand-700">{t}</span>
-          ))}
-        </div>
-      )}
+      <div className="mb-2 flex flex-wrap items-center gap-1.5">
+        {item.content_type && (
+          <span className="inline-flex items-center rounded-full bg-brand-900 px-2.5 py-0.5 text-xs font-semibold text-white">{item.content_type}</span>
+        )}
+        {item.tags?.slice(0, 2).map((t) => (
+          <span key={t} className="inline-flex items-center rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-semibold text-brand-700">{t}</span>
+        ))}
+      </div>
       <h3 className="break-words font-display text-lg font-semibold leading-snug tracking-tight text-brand-900 group-hover:text-brand-600">
         {item.title || "Untitled Article"}
       </h3>

@@ -35,9 +35,10 @@ export default function KnowledgeDetail() {
       <article className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
         <Link to="/knowledge-hub" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-brand-600"><ArrowLeft className="h-4 w-4" /> Back to Knowledge Hub</Link>
 
-        {item.tags?.length > 0 && (
-          <div className="mt-5 flex flex-wrap gap-1.5">
-            {item.tags.map((t) => <span key={t} className="inline-flex items-center rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-semibold text-brand-700">{t}</span>)}
+        {(item.content_type || item.tags?.length > 0) && (
+          <div className="mt-5 flex flex-wrap items-center gap-1.5">
+            {item.content_type && <span className="inline-flex items-center rounded-full bg-brand-900 px-2.5 py-0.5 text-xs font-semibold text-white">{item.content_type}</span>}
+            {item.tags?.map((t) => <span key={t} className="inline-flex items-center rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-semibold text-brand-700">{t}</span>)}
           </div>
         )}
 
@@ -62,10 +63,20 @@ export default function KnowledgeDetail() {
           <RichContent html={item.content} />
         </div>
 
-        {item.author_info && (
-          <div className="mt-8 rounded-lg border border-slate-200 bg-white p-5">
-            <h3 className="font-display text-sm font-semibold text-brand-900">About the author</h3>
-            <p className="mt-1.5 text-sm leading-relaxed text-slate-600">{item.author_info}</p>
+        {(item.author_info || item.linkedin || item.profile_picture) && (
+          <div className="mt-8 flex items-start gap-4 rounded-lg border border-slate-200 bg-white p-5">
+            {item.profile_picture && (
+              <img src={fileUrl(item.profile_picture.url)} alt={item.author_name || "Author"} className="h-14 w-14 flex-shrink-0 rounded-full object-cover" />
+            )}
+            <div>
+              <h3 className="font-display text-sm font-semibold text-brand-900">{item.author_name ? `About ${item.author_name}` : "About the author"}</h3>
+              {item.author_info && <p className="mt-1.5 text-sm leading-relaxed text-slate-600">{item.author_info}</p>}
+              {item.linkedin && (
+                <a href={item.linkedin} target="_blank" rel="noopener noreferrer" data-testid="knowledge-linkedin" className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-brand-600 hover:text-brand-700">
+                  <ExternalLink className="h-3.5 w-3.5" /> LinkedIn Profile
+                </a>
+              )}
+            </div>
           </div>
         )}
 

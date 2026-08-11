@@ -63,7 +63,11 @@ export const RichTextEditor = ({ value, onChange, testid = "rich-editor" }) => {
       const fd = new FormData();
       fd.append("file", file);
       const { data } = await api.post("/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
-      editor.chain().focus().setImage({ src: fileUrl(data.url), alt: data.filename }).run();
+      const caption = window.prompt("Add an image caption (optional)", "");
+      editor.chain().focus().setImage({ src: fileUrl(data.url), alt: caption || data.filename }).run();
+      if (caption && caption.trim()) {
+        editor.chain().focus().insertContent(`<p class="img-caption"><em>${caption.trim()}</em></p>`).run();
+      }
     } catch {
       toast.error("Image upload failed");
     } finally {

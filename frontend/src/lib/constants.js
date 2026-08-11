@@ -42,6 +42,8 @@ export const STATUS_OPTIONS = ["draft", "pending", "active", "archived", "reject
 
 export const REQUIREMENT_TYPES = ["Contractor / Consultancy", "Workmen / Labour", "Material", "Machinery"];
 
+export const CONTENT_TYPES = ["Article", "Construction Technology", "Industry News"];
+
 export const SERVICE_CATEGORIES = {
   "Design & Engineering": ["Architect", "Structural Engineer", "Interior Designer", "Landscape Designer", "MEP Consultant", "Electrical Designer", "Plumbing Designer", "HVAC Designer", "BIM Modeler / Draftsman", "3D Visualizer"],
   "Liaisoning & Approvals": ["Liaisoning Consultant (GHMC/HMDA)", "Legal Consultant", "Surveyor (Land Survey)", "Town Planning Consultant"],

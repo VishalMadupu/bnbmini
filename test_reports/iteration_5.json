@@ -1,0 +1,48 @@
+{
+  "summary": "Iteration 5 – Universal BNB ID + Dashboard + Complete-Record + Private Status + Excel Exports + Knowledge new fields + Vendor All-India. Backend: 82/82 pytest tests PASS (serial). New test file /app/backend/tests/test_universal_bnb.py (28 tests) covers: universal BNB-###### format on jobs/tenders/wr/knowledge (public + admin) with record_type, universal counter strictly increasing and shared across 6 modules in a single test window (job->tender->wr->knowledge->resume->vendor consumed 6 consecutive seq numbers), /api/admin/stats returns public {jobs,tenders,work-requirements,knowledge}=>{total,pending,published,archived,bnb_created,public_submissions} and private {resumes,vendors}=>{total,new_pending,reviewed,archived} and requires auth, PATCH /api/admin/resumes|vendors/{id}/status (new/reviewed/archived) roundtrips, invalid status -> 422, no public resumes/vendors listing (404), knowledge public detail STRIPS author_contact + origin while keeping linkedin, all 6 Excel exports return valid .xlsx (PK zip), export requires auth, knowledge submit with content_type/linkedin/author_contact stores fields + sets origin=Public Submission + status=pending. Older test files backend_test.py and test_phase2_knowledge.py were updated: replaced old prefix assertions (BNB-J-, BNB-T-, BNB-K-, BNB-WR-, BNB-R-, BNB-V-) with universal ^BNB-\\d{6}$ regex, fixed sitemap test to look for bnb-\\d{6} in the xml, and updated hard-coded BNB-J-2026-00001 -> BNB-000001. Frontend (Playwright): /submit/opportunity Job tab -> field-applicant-contact='abc123' + submit-button triggers toast 'Applicant contact must be a 10-digit mobile number or a valid email' (blocked). Tender tab (submit-kind-tender) -> field-contact='notacontact' -> toast 'Contact for clarifications must be a 10-digit mobile number or a valid email' (blocked). /admin login with Hitchhiker@360 -> admin-tab-dashboard is DEFAULT visible tab, admin-dashboard-panel renders, all 6 dashboard-card-<jobs|tenders|work-requirements|knowledge|resumes|vendors> present, clicking a stat-<label> tile switches the active tab to the target module (verified stat-pending inside dashboard-card-jobs -> admin-tab-jobs becomes data-state=active). admin-view-BNB-###### / admin-submitter-BNB-###### opens admin-full-record dialog which contains 'BNB-' and 'Job' record_type text. admin-export-button on Jobs tab downloads bnb-jobs.xlsx. Resumes tab exposes admin-reviewed-BNB-###### and admin-archive-BNB-######; Vendors tab exposes admin-reviewed-BNB-######. /submit/knowledge shows knowledge-field-contenttype, knowledge-field-linkedin, knowledge-field-contact, knowledge-field-profilepic, knowledge-editor, knowledge-declaration; submitting without ticking declaration produces toast 'Please confirm the declaration before submitting'. /submit/vendor exposes vendor-serviceable-allindia checkbox alongside all states.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "backend/tests/test_phase2_knowledge.py", "issue": "Uses a module-level shared STATE dict and is order-dependent; when run under pytest-xdist parallel workers it fails because different classes execute on different workers. Not a product bug – run with -n 0 (serial) as pytest.ini default now leads to 82/82 pass. Recommend refactoring STATE into a session fixture."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin dialogs", "issues": ["Radix DialogContent missing Description / aria-describedby carry-over from iter-3/4 – non-functional a11y warning only."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_universal_bnb.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_phase2_knowledge.py",
+    "/app/test_reports/pytest/iter5_universal.xml",
+    "/app/test_reports/pytest/iter5_full.xml"
+  ],
+  "action_items": [
+    "(minor) Refactor test_phase2_knowledge.py to use a session-scoped fixture instead of module-level STATE so it is safe under pytest-xdist parallel execution (currently only reliable with -n 0).",
+    "(optional a11y) Add VisuallyHidden DialogTitle + DialogDescription to admin-full-record / KnowledgeEditor dialogs to eliminate Radix warnings."
+  ],
+  "critical_code_review_comments": [
+    "server.py next_bnb_id() correctly uses find_one_and_update with $inc + upsert on 'bnb_universal' counter – atomic and race-safe. Confirmed 6 consecutive submissions returned strictly increasing seq (no gaps).",
+    "public_view() correctly strips submitter_*, source_type, origin AND author_contact — verified for knowledge public detail (author_contact absent, linkedin present).",
+    "make_wr_doc does not explicitly set record_type inside the function body, but the caller at /submit/work-requirement paths sets record_type='Work Requirement' on the payload before insert – verified on live data (BNB-000018 record_type='Work Requirement'). Consider moving the assignment INTO make_wr_doc for consistency with make_job_doc/make_tender_doc/make_knowledge_doc which set it internally.",
+    "PrivateStatusUpdate uses Literal['new','reviewed','archived'] – invalid values correctly return 422 (verified).",
+    "/api/admin/stats derives 'bnb_created' by falling back to source_type when origin is absent – handles legacy rows nicely.",
+    "EXPORT_COLUMNS includes record_type & origin for jobs/tenders/wr/knowledge and record_type for resumes/vendors as required; knowledge includes content_type + linkedin columns.",
+    "server.py is 1163 lines – nearing the 700-line guideline; consider splitting into modules (public routes, admin routes, models, helpers, exports)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_universal_bnb.py (new – 28 tests)",
+    "/app/backend/tests/backend_test.py (BNB-J-/BNB-T- prefix asserts replaced with universal ^BNB-\\d{6}$ regex; hard-coded BNB-J-2026-00001 -> BNB-000001; sitemap assert updated to bnb-\\d{6})",
+    "/app/backend/tests/test_phase2_knowledge.py (BNB-K-/BNB-WR-/BNB-R-/BNB-V- asserts replaced with universal regex)"
+  ],
+  "success_rate": {"backend": "100% (82/82 serial)", "frontend": "100% of critical flows"},
+  "test_credentials": "Admin password Hitchhiker@360 from backend/.env ADMIN_PASSWORD.",
+  "seed_data_creation": "Created and cleaned up during pytest: TEST_UBI_job/tender/wr/kh/resume/vendor (universal-sequence probe), TEST_status resume/vendor (status roundtrip), TEST_iso_kh (author_contact isolation), TEST_KH_new_fields. All deleted by TestZCleanup. One TEST_UBI vendor row (BNB-000033) was observed lingering during UI phase but cleaned by the follow-up cleanup run.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Universal BNB counter is at ~BNB-000100 range (grew from 22 after seeding + tests). Reusable regression tests: /app/backend/tests/test_universal_bnb.py. Run backend suite with `pytest /app/backend/tests -n 0 --junitxml=/app/test_reports/pytest/results.xml` (serial required due to shared STATE in test_phase2_knowledge.py). Admin testids confirmed: admin-tab-dashboard (default), admin-tab-jobs/tenders/wr/knowledge/inbox/resumes/vendors, admin-dashboard-panel, dashboard-card-<key> where key is jobs|tenders|work-requirements|knowledge|resumes|vendors, stat-<slug>, admin-view-<bnb>/admin-submitter-<bnb>, admin-full-record, admin-reviewed-<bnb>/admin-archive-<bnb>, admin-export-button. Job/Tender submit is now at /submit/opportunity (not /submit which is now SubmitHub). Frontend validation lives in /app/frontend/src/lib/validate.js – mobile regex ^[6-9]\\d{9}$, so 9876543210 passes but 1234567890 would fail.",
+  "rca of the issue": "No product bugs found. Two purely-test issues fixed in this iteration: (a) prior test files hard-coded module-prefixed BNB IDs (BNB-J-/BNB-K-/etc) which no longer match after the universal-ID migration – updated to ^BNB-\\d{6}$ regex; (b) test_phase2_knowledge.py fails intermittently under pytest-xdist because module-level STATE dict is not visible across workers – documented; safe workaround is -n 0."
+}
