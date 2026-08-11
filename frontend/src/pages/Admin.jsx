@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
-import { Plus, Pencil, Trash2, CheckCircle2, Archive, Send, XCircle, Eye, KeyRound, LogOut } from "lucide-react";
+import { Plus, Pencil, Trash2, CheckCircle2, Archive, Send, XCircle, Eye, KeyRound, LogOut, Download } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
+import { isValidContact } from "@/lib/validate";
 import Seo from "@/components/Seo";
 import { FileUpload } from "@/components/FileUpload";
 import { Button } from "@/components/ui/button";
@@ -16,8 +17,8 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
-import { api } from "@/lib/api";
-import { INDIAN_STATES, SOURCE_TYPES, VERIFICATION_OPTIONS, STATUS_OPTIONS, COLLAR_TYPES, AUTHORITY_TYPES } from "@/lib/constants";
+import { api, API, fileUrl } from "@/lib/api";
+import { INDIAN_STATES, SOURCE_TYPES, VERIFICATION_OPTIONS, STATUS_OPTIONS, COLLAR_TYPES, AUTHORITY_TYPES, REQUIREMENT_TYPES } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
 import { toast } from "sonner";
 
@@ -32,6 +33,7 @@ const statusColor = {
 const emptyForm = {
   title: "", organization: "", state: "", city: "", category: "", description: "",
   collar_type: "Not Specified", trade: "", authority_type: "",
+  requirement_type: "Contractor / Consultancy", quantity: "", contact: "",
   last_date: "", applicant_email: "", applicant_phone: "", applicant_url: "",
   estimated_value: "", original_reference: "", official_url: "", contact_clarifications: "",
   attachment: null, source_type: "BNB Research", verification_status: "no_badge", status: "active",
@@ -52,31 +54,40 @@ function Editor({ open, onClose, kind, editing, onSaved }) {
 
   useEffect(() => {
     if (editing) {
-      setForm({ ...emptyForm, ...editing, last_date: editing.last_date ? editing.last_date.slice(0, 10) : "" });
+      const dateVal = editing.last_date || editing.required_by;
+      setForm({ ...emptyForm, ...editing, last_date: dateVal ? dateVal.slice(0, 10) : "" });
     } else {
       setForm(emptyForm);
     }
   }, [editing, open]);
 
   const save = async () => {
+    if (kind === "workrequirement" && form.contact && !isValidContact(form.contact)) {
+      toast.error("Contact must be a 10-digit mobile number or a valid email");
+      return;
+    }
     setSaving(true);
     try {
+      const path = kind === "workrequirement" ? "work-requirements" : `${kind}s`;
       const payload = {
         ...form,
         last_date: form.last_date || null,
+        required_by: form.last_date || null,
+        contact: form.contact || null,
+        quantity: form.quantity || null,
         category: form.category || null,
       };
       if (editing) {
-        await api.put(`/admin/${kind}s/${editing.id}`, payload);
-        toast.success(`${kind} updated`);
+        await api.put(`/admin/${path}/${editing.id}`, payload);
+        toast.success("Updated");
       } else {
-        await api.post(`/admin/${kind}s`, payload);
-        toast.success(`${kind} created`);
+        await api.post(`/admin/${path}`, payload);
+        toast.success("Created");
       }
       onSaved();
       onClose();
     } catch (e) {
-      toast.error("Save failed — check required fields (title, organization, state, city, description)");
+      toast.error(e.response?.data?.detail || "Save failed — check the fields and try again");
     } finally {
       setSaving(false);
     }
@@ -103,13 +114,26 @@ function Editor({ open, onClose, kind, editing, onSaved }) {
           </div>
           <Field label="Description *"><Textarea data-testid="admin-field-desc" rows={4} value={form.description} onChange={(e) => set("description", e.target.value)} /></Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label={kind === "job" ? "Last date to apply" : "Last date for submission"}>
+            <Field label={kind === "workrequirement" ? "Required by" : kind === "job" ? "Last date to apply" : "Last date for submission"}>
               <Input type="date" data-testid="admin-field-lastdate" value={form.last_date} onChange={(e) => set("last_date", e.target.value)} />
             </Field>
             <Field label="Category"><Input value={form.category || ""} onChange={(e) => set("category", e.target.value)} /></Field>
           </div>
 
-          {kind === "job" ? (
+          {kind === "workrequirement" ? (
+            <div className="grid grid-cols-1 gap-3">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Requirement type">
+                  <Select value={form.requirement_type} onValueChange={(v) => set("requirement_type", v)}>
+                    <SelectTrigger data-testid="admin-field-reqtype"><SelectValue /></SelectTrigger>
+                    <SelectContent>{REQUIREMENT_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Quantity"><Input placeholder="e.g. 20 workers" value={form.quantity || ""} onChange={(e) => set("quantity", e.target.value)} /></Field>
+              </div>
+              <Field label="Contact for Respondents"><Input data-testid="admin-field-contact" placeholder="10-digit mobile or email" value={form.contact || ""} onChange={(e) => set("contact", e.target.value)} /></Field>
+            </div>
+          ) : kind === "job" ? (
             <div className="grid grid-cols-1 gap-3">
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Collar type">
@@ -143,7 +167,7 @@ function Editor({ open, onClose, kind, editing, onSaved }) {
             </div>
           )}
 
-          <FileUpload label={kind === "job" ? "Attachment" : "Tender document"} value={form.attachment} onChange={(v) => set("attachment", v)} testid="admin-field-attachment" />
+          <FileUpload label={kind === "tender" ? "Tender document" : "Attachment"} value={form.attachment} onChange={(v) => set("attachment", v)} testid="admin-field-attachment" />
 
           <div className="grid grid-cols-3 gap-3 border-t border-slate-100 pt-4">
             <Field label="Source type">
@@ -246,27 +270,53 @@ export default function Admin() {
   const [submitter, setSubmitter] = useState(null);
   const [pendingCount, setPendingCount] = useState(0);
   const [selected, setSelected] = useState(() => new Set());
+  const [detail, setDetail] = useState(null);
+
+  const kindPath = (k) => (k === "workrequirement" ? "work-requirements" : `${k}s`);
+  const isPrivate = kind === "resume" || kind === "vendor";
 
   const logout = () => {
     localStorage.removeItem("bnb_admin_token");
     setToken(null);
   };
 
+  const doExport = async () => {
+    try {
+      const token2 = localStorage.getItem("bnb_admin_token");
+      const params = new URLSearchParams();
+      if (!isPrivate && kind !== "inbox" && statusFilter !== "all") params.set("status", statusFilter);
+      const res = await fetch(`${API}/admin/export/${kindPath(kind === "inbox" ? "job" : kind)}?${params}`, { headers: { Authorization: `Bearer ${token2}` } });
+      if (!res.ok) throw new Error("export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `bnb-${kindPath(kind)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error("Export failed");
+    }
+  };
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       if (kind === "inbox") {
-        const [j, t] = await Promise.all([
+        const [j, t, w] = await Promise.all([
           api.get(`/admin/jobs`, { params: { status: "pending" } }),
           api.get(`/admin/tenders`, { params: { status: "pending" } }),
+          api.get(`/admin/work-requirements`, { params: { status: "pending" } }),
         ]);
         const merged = [
           ...j.data.map((x) => ({ ...x, _type: "job" })),
           ...t.data.map((x) => ({ ...x, _type: "tender" })),
+          ...w.data.map((x) => ({ ...x, _type: "workrequirement" })),
         ].sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
         setItems(merged);
       } else {
-        const { data } = await api.get(`/admin/${kind}s`, { params: { status: statusFilter } });
+        const params = kind === "resume" || kind === "vendor" ? {} : { status: statusFilter };
+        const { data } = await api.get(`/admin/${kindPath(kind)}`, { params });
         setItems(data.map((x) => ({ ...x, _type: kind })));
       }
     } catch (err) {
@@ -280,11 +330,12 @@ export default function Admin() {
 
   const refreshCounts = useCallback(async () => {
     try {
-      const [j, t] = await Promise.all([
+      const [j, t, w] = await Promise.all([
         api.get("/admin/jobs", { params: { status: "pending" } }),
         api.get("/admin/tenders", { params: { status: "pending" } }),
+        api.get("/admin/work-requirements", { params: { status: "pending" } }),
       ]);
-      setPendingCount(j.data.length + t.data.length);
+      setPendingCount(j.data.length + t.data.length + w.data.length);
     } catch (e) { /* ignore */ }
   }, []);
 
@@ -293,15 +344,15 @@ export default function Admin() {
   if (!token) return <AdminLogin onLogin={setToken} />;
 
   const patch = async (id, body, rowKind) => {
-    await api.patch(`/admin/${rowKind || kind}s/${id}/status`, body);
+    await api.patch(`/admin/${kindPath(rowKind || kind)}/${id}/status`, body);
     toast.success("Updated");
     load();
     refreshCounts();
   };
 
   const remove = async (id, rowKind) => {
-    if (!window.confirm("Delete this listing permanently?")) return;
-    await api.delete(`/admin/${rowKind || kind}s/${id}`);
+    if (!window.confirm("Delete this record permanently?")) return;
+    await api.delete(`/admin/${kindPath(rowKind || kind)}/${id}`);
     toast.success("Deleted");
     load();
     refreshCounts();
@@ -315,7 +366,7 @@ export default function Admin() {
   const clearSel = () => setSelected(new Set());
   const bulkAction = async (body) => {
     const chosen = items.filter((x) => selected.has(x.id));
-    await Promise.all(chosen.map((x) => api.patch(`/admin/${x._type}s/${x.id}/status`, body)));
+    await Promise.all(chosen.map((x) => api.patch(`/admin/${kindPath(x._type)}/${x.id}/status`, body)));
     toast.success(`Updated ${chosen.length} item(s)`);
     clearSel();
     load();
@@ -351,11 +402,14 @@ export default function Admin() {
             <TabsList>
               <TabsTrigger value="job" data-testid="admin-tab-jobs">Jobs</TabsTrigger>
               <TabsTrigger value="tender" data-testid="admin-tab-tenders">Tenders</TabsTrigger>
+              <TabsTrigger value="workrequirement" data-testid="admin-tab-wr">Work Req.</TabsTrigger>
               <TabsTrigger value="inbox" data-testid="admin-tab-inbox">Inbox{kind === "inbox" && items.length ? ` (${items.length})` : ""}</TabsTrigger>
+              <TabsTrigger value="resume" data-testid="admin-tab-resumes">Resumes</TabsTrigger>
+              <TabsTrigger value="vendor" data-testid="admin-tab-vendors">Vendors</TabsTrigger>
             </TabsList>
           </Tabs>
-          {kind !== "inbox" && (
-            <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3">
+            {!isPrivate && kind !== "inbox" && (
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger data-testid="admin-status-filter" className="w-40 bg-white"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -363,17 +417,61 @@ export default function Admin() {
                   {STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}
                 </SelectContent>
               </Select>
+            )}
+            <Button variant="outline" data-testid="admin-export-button" onClick={doExport} className="gap-2">
+              <Download className="h-4 w-4" /> Export Excel
+            </Button>
+            {!isPrivate && kind !== "inbox" && (
               <Button data-testid="admin-create-button" onClick={() => { setEditing(null); setEditorOpen(true); }} className="gap-2 bg-brand-600 text-white hover:bg-brand-700">
-                <Plus className="h-4 w-4" /> Create {kind}
+                <Plus className="h-4 w-4" /> Create
               </Button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {kind === "inbox" && (
-          <p className="mt-4 text-sm text-slate-500">Opportunities submitted by the public, awaiting review. Approve (publish), verify, or reject each one.</p>
+          <p className="mt-4 text-sm text-slate-500">Public submissions awaiting review (Jobs, Tenders & Work Requirements). Approve (publish), verify, or reject each one.</p>
+        )}
+        {isPrivate && (
+          <p className="mt-4 text-sm text-slate-500">Private {kind === "resume" ? "resume" : "vendor"} submissions — not shown publicly.</p>
         )}
 
+        {isPrivate ? (
+          <div className="mt-6 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-400">
+                <tr>
+                  <th className="px-4 py-3">ID</th>
+                  <th className="px-4 py-3">{kind === "resume" ? "Name" : "Company"}</th>
+                  <th className="px-4 py-3 hidden sm:table-cell">Contact</th>
+                  <th className="px-4 py-3 hidden lg:table-cell">{kind === "resume" ? "Role" : "Reg. State"}</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {loading ? (
+                  <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-400">Loading...</td></tr>
+                ) : items.length === 0 ? (
+                  <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-400">No {kind === "resume" ? "resumes" : "vendors"} yet.</td></tr>
+                ) : items.map((it) => (
+                  <tr key={it.id} data-testid={`admin-row-${it.bnb_id}`} className="hover:bg-slate-50">
+                    <td className="px-4 py-3 font-mono text-xs text-slate-500">{it.bnb_id}</td>
+                    <td className="px-4 py-3 font-medium text-slate-800">{kind === "resume" ? it.full_name : it.company_name}</td>
+                    <td className="px-4 py-3 hidden sm:table-cell text-slate-500">{it.email || it.phone || "—"}</td>
+                    <td className="px-4 py-3 hidden lg:table-cell text-slate-500">{kind === "resume" ? (it.preferred_role || "—") : (it.reg_state || "—")}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <button title="View" data-testid={`admin-view-${it.bnb_id}`} onClick={() => setDetail(it)} className="rounded p-1.5 text-slate-500 hover:bg-slate-100"><Eye className="h-4 w-4" /></button>
+                        <button title="Delete" data-testid={`admin-delete-${it.bnb_id}`} onClick={() => remove(it.id, kind)} className="rounded p-1.5 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+        <div>
         {kind === "inbox" && selected.size > 0 && (
           <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-white p-3">
             <span className="text-sm font-medium text-slate-700">{selected.size} selected</span>
@@ -446,7 +544,22 @@ export default function Admin() {
             </tbody>
           </table>
         </div>
+        </div>
+        )}
       </div>
+
+      <Dialog open={!!detail} onOpenChange={() => setDetail(null)}>
+        <DialogContent className="max-h-[85vh] max-w-md overflow-y-auto">
+          <DialogHeader><DialogTitle className="font-display">{detail?.bnb_id}</DialogTitle></DialogHeader>
+          <div className="space-y-1.5 text-sm">
+            {detail && Object.entries(detail).filter(([k]) => !["_id", "id", "_type", "slug", "declaration", "status", "resume", "brochure"].includes(k)).map(([k, v]) => (
+              <div key={k}><span className="text-slate-400">{k}: </span><span className="break-words text-slate-700">{Array.isArray(v) ? v.join(", ") : (v && typeof v === "object") ? (v.filename || v.url) : (v === null || v === "" ? "—" : String(v))}</span></div>
+            ))}
+            {detail?.resume && <a href={fileUrl(detail.resume.url)} target="_blank" rel="noopener noreferrer" className="font-medium text-brand-600 underline">Download resume ({detail.resume.filename})</a>}
+            {detail?.brochure && <a href={fileUrl(detail.brochure.url)} target="_blank" rel="noopener noreferrer" className="font-medium text-brand-600 underline">Download brochure ({detail.brochure.filename})</a>}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Editor open={editorOpen} onClose={() => setEditorOpen(false)} kind={kind === "inbox" ? (editing?._type || "job") : kind} editing={editing} onSaved={load} />
       <SubmitterDialog item={submitter} onClose={() => setSubmitter(null)} />

@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetClose, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 
 const links = [
-  { to: "/jobs", label: "Jobs" },
-  { to: "/tenders", label: "Tenders" },
+  { to: "/jobs", label: "Jobs", id: "jobs" },
+  { to: "/tenders", label: "Tenders", id: "tenders" },
+  { to: "/work-requirements", label: "Work Requirements", id: "work" },
 ];
 
 export const Header = () => {
@@ -30,7 +31,7 @@ export const Header = () => {
             <Link
               key={l.to}
               to={l.to}
-              data-testid={`nav-${l.label.toLowerCase()}`}
+              data-testid={`nav-${l.id}`}
               className={`rounded-md px-3 py-2 text-sm font-medium transition-colors hover:text-brand-600 ${
                 pathname.startsWith(l.to) ? "text-brand-600" : "text-slate-700"
               }`}
@@ -61,7 +62,7 @@ export const Header = () => {
                   <SheetClose asChild key={l.to}>
                     <Link
                       to={l.to}
-                      data-testid={`mobile-nav-${l.label.toLowerCase()}`}
+                      data-testid={`mobile-nav-${l.id}`}
                       className={`rounded-md px-3 py-3 text-base font-medium ${
                         pathname.startsWith(l.to) ? "bg-brand-50 text-brand-600" : "text-slate-700 hover:bg-slate-100"
                       }`}

@@ -10,6 +10,8 @@ import uuid
 import hmac
 import jwt
 import httpx
+import io
+from openpyxl import Workbook
 import requests
 from pathlib import Path
 from pydantic import BaseModel, Field
@@ -205,7 +207,7 @@ def public_view(doc: dict) -> dict:
     """Strip internal-only fields for public responses."""
     doc = clean(dict(doc))
     for f in ["submitter_name", "submitter_company", "submitter_email",
-              "submitter_phone", "submitter_notes", "source_type"]:
+              "submitter_phone", "submitter_notes", "submitter_contact", "source_type"]:
         doc.pop(f, None)
     doc["verified"] = doc.get("verification_status") == "verified"
     exp = doc.get("expiry_date")
@@ -417,9 +419,11 @@ async def meta():
 
     j_states, j_cities, j_map = await loc("jobs", ["active"])
     t_states, t_cities, t_map = await loc("tenders", ["active", "archived"])
+    w_states, w_cities, w_map = await loc("work_requirements", ["active", "archived"])
     return {
         "job_states": j_states, "job_cities": j_cities, "job_cities_by_state": j_map,
         "tender_states": t_states, "tender_cities": t_cities, "tender_cities_by_state": t_map,
+        "wr_states": w_states, "wr_cities": w_cities, "wr_cities_by_state": w_map,
     }
 
 
@@ -616,6 +620,286 @@ async def admin_delete_tender(item_id: str):
     return {"message": "deleted"}
 
 
+# ================= EXPANSION: Work Requirements / Resumes / Vendors =================
+MOBILE_RE = re.compile(r"^[6-9]\d{9}$")
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def valid_contact(v):
+    return bool(v) and bool(MOBILE_RE.match(v) or EMAIL_RE.match(v))
+
+
+RequirementType = Literal["Contractor / Consultancy", "Workmen / Labour", "Material", "Machinery"]
+
+
+class WorkRequirementIn(BaseModel):
+    requirement_type: RequirementType = "Contractor / Consultancy"
+    title: Optional[str] = None
+    organization: Optional[str] = None
+    state: Optional[str] = None
+    city: Optional[str] = None
+    quantity: Optional[str] = None
+    description: Optional[str] = None
+    required_by: Optional[str] = None
+    contact: Optional[str] = None
+    attachment: Optional[FileRef] = None
+    source_type: SourceType = "BNB Research"
+    verification_status: VerificationStatus = "no_badge"
+    status: ListingStatus = "active"
+    submitter_name: Optional[str] = None
+    submitter_contact: Optional[str] = None
+    submitter_notes: Optional[str] = None
+
+
+class WorkRequirementSubmit(BaseModel):
+    requirement_type: RequirementType = "Contractor / Consultancy"
+    title: Optional[str] = None
+    organization: Optional[str] = None
+    state: Optional[str] = None
+    city: Optional[str] = None
+    quantity: Optional[str] = None
+    description: Optional[str] = None
+    required_by: Optional[str] = None
+    contact: Optional[str] = None
+    attachment: Optional[FileRef] = None
+    submitter_name: Optional[str] = None
+    submitter_contact: Optional[str] = None
+    submitter_notes: Optional[str] = None
+
+
+class ResumeIn(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    location: Optional[str] = None
+    preferred_role: Optional[str] = None
+    experience: Optional[str] = None
+    resume: Optional[FileRef] = None
+    linkedin: Optional[str] = None
+    other_info: Optional[str] = None
+    declaration: bool = False
+
+
+class VendorIn(BaseModel):
+    company_name: Optional[str] = None
+    contact_person: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    website: Optional[str] = None
+    reg_state: Optional[str] = None
+    reg_city: Optional[str] = None
+    serviceable_locations: List[str] = []
+    service_categories: List[str] = []
+    service_categories_other: Optional[str] = None
+    services_description: Optional[str] = None
+    brochure: Optional[FileRef] = None
+    declaration: bool = False
+
+
+async def make_wr_doc(data: dict) -> dict:
+    posted = now_iso()
+    bnb_id = await next_bnb_id("WR")
+    doc = {
+        "id": str(uuid.uuid4()), "bnb_id": bnb_id, "posted_date": posted,
+        "expiry_date": compute_expiry(data.get("required_by"), posted),
+        "created_at": posted, "updated_at": posted, **data,
+    }
+    doc["slug"] = build_slug(doc.get("title") or "requirement", doc.get("city") or "", bnb_id)
+    return doc
+
+
+# ---------- Public: Work Requirements ----------
+@api_router.get("/work-requirements")
+async def list_wr(search: Optional[str] = None, requirement_type: Optional[str] = None,
+                  state: Optional[str] = None, city: Optional[str] = None,
+                  include_expired: bool = False, limit: int = 100):
+    await archive_expired("work_requirements")
+    base = {"status": {"$in": ["active", "archived"]}} if include_expired else {"status": "active"}
+    if requirement_type and requirement_type != "all":
+        base["requirement_type"] = requirement_type
+    query = apply_filters(base, search, state, city, None)
+    docs = await db.work_requirements.find(query).sort("posted_date", -1).to_list(limit)
+    return [public_view(d) for d in docs]
+
+
+@api_router.get("/work-requirements/{slug}")
+async def get_wr(slug: str):
+    await archive_expired("work_requirements")
+    bnb_id = extract_bnb_id(slug) or slug.upper()
+    doc = await db.work_requirements.find_one({"bnb_id": bnb_id}) or await db.work_requirements.find_one({"slug": slug})
+    if not doc or doc.get("status") in ("draft", "pending", "rejected"):
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    return public_view(doc)
+
+
+@api_router.post("/submissions/work-requirement")
+async def submit_wr(payload: WorkRequirementSubmit):
+    data = payload.model_dump()
+    if data.get("contact") and not valid_contact(data["contact"]):
+        raise HTTPException(status_code=422, detail="Contact must be a 10-digit mobile number or a valid email")
+    data.update({"source_type": "Company Submission", "verification_status": "no_badge", "status": "pending"})
+    doc = await make_wr_doc(data)
+    await db.work_requirements.insert_one(doc)
+    await send_submission_email("work requirement", doc)
+    return {"message": "submitted", "bnb_id": doc["bnb_id"]}
+
+
+# ---------- Admin: Work Requirements ----------
+@api_router.get("/admin/work-requirements")
+async def admin_list_wr(status: Optional[str] = None):
+    await archive_expired("work_requirements")
+    query = {} if not status or status == "all" else {"status": status}
+    docs = await db.work_requirements.find(query).sort("created_at", -1).to_list(1000)
+    return [clean(d) for d in docs]
+
+
+@api_router.post("/admin/work-requirements")
+async def admin_create_wr(payload: WorkRequirementIn):
+    data = payload.model_dump()
+    if data.get("contact") and not valid_contact(data["contact"]):
+        raise HTTPException(status_code=422, detail="Contact must be a 10-digit mobile number or a valid email")
+    doc = await make_wr_doc(data)
+    await db.work_requirements.insert_one(doc)
+    return clean(doc)
+
+
+@api_router.put("/admin/work-requirements/{item_id}")
+async def admin_update_wr(item_id: str, payload: WorkRequirementIn):
+    existing = await db.work_requirements.find_one({"id": item_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Not found")
+    data = payload.model_dump()
+    if data.get("contact") and not valid_contact(data["contact"]):
+        raise HTTPException(status_code=422, detail="Contact must be a 10-digit mobile number or a valid email")
+    data["updated_at"] = now_iso()
+    data["expiry_date"] = compute_expiry(data.get("required_by"), existing["posted_date"])
+    data["slug"] = build_slug(data.get("title") or "requirement", data.get("city") or "", existing["bnb_id"])
+    await db.work_requirements.update_one({"id": item_id}, {"$set": data})
+    return clean(await db.work_requirements.find_one({"id": item_id}))
+
+
+@api_router.patch("/admin/work-requirements/{item_id}/status")
+async def admin_wr_status(item_id: str, payload: StatusUpdate):
+    upd = {k: v for k, v in payload.model_dump().items() if v is not None}
+    upd["updated_at"] = now_iso()
+    res = await db.work_requirements.update_one({"id": item_id}, {"$set": upd})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    return clean(await db.work_requirements.find_one({"id": item_id}))
+
+
+@api_router.delete("/admin/work-requirements/{item_id}")
+async def admin_delete_wr(item_id: str):
+    await db.work_requirements.delete_one({"id": item_id})
+    return {"message": "deleted"}
+
+
+# ---------- Private: Resumes ----------
+@api_router.post("/resumes")
+async def submit_resume(payload: ResumeIn):
+    data = payload.model_dump()
+    if data.get("email") and not EMAIL_RE.match(data["email"]):
+        raise HTTPException(status_code=422, detail="Invalid email")
+    bnb_id = await next_bnb_id("R")
+    doc = {"id": str(uuid.uuid4()), "bnb_id": bnb_id, "created_at": now_iso(), "status": "new", **data}
+    await db.resumes.insert_one(doc)
+    return {"message": "submitted", "bnb_id": bnb_id}
+
+
+@api_router.get("/admin/resumes")
+async def admin_list_resumes():
+    docs = await db.resumes.find({}).sort("created_at", -1).to_list(2000)
+    return [clean(d) for d in docs]
+
+
+@api_router.delete("/admin/resumes/{item_id}")
+async def admin_delete_resume(item_id: str):
+    await db.resumes.delete_one({"id": item_id})
+    return {"message": "deleted"}
+
+
+# ---------- Private: Vendors ----------
+@api_router.post("/vendors")
+async def submit_vendor(payload: VendorIn):
+    data = payload.model_dump()
+    if data.get("email") and not EMAIL_RE.match(data["email"]):
+        raise HTTPException(status_code=422, detail="Invalid email")
+    bnb_id = await next_bnb_id("V")
+    doc = {"id": str(uuid.uuid4()), "bnb_id": bnb_id, "created_at": now_iso(), "status": "new", **data}
+    await db.vendors.insert_one(doc)
+    return {"message": "submitted", "bnb_id": bnb_id}
+
+
+@api_router.get("/admin/vendors")
+async def admin_list_vendors():
+    docs = await db.vendors.find({}).sort("created_at", -1).to_list(2000)
+    return [clean(d) for d in docs]
+
+
+@api_router.delete("/admin/vendors/{item_id}")
+async def admin_delete_vendor(item_id: str):
+    await db.vendors.delete_one({"id": item_id})
+    return {"message": "deleted"}
+
+
+# ---------- Excel Export ----------
+EXPORT_COLUMNS = {
+    "jobs": ["bnb_id", "title", "organization", "state", "city", "category", "collar_type", "trade",
+             "last_date", "applicant_email", "applicant_phone", "applicant_url", "source_type",
+             "verification_status", "status", "posted_date", "submitter_name", "submitter_email",
+             "submitter_phone", "submitter_notes"],
+    "tenders": ["bnb_id", "title", "organization", "state", "city", "authority_type", "estimated_value",
+                "original_reference", "official_url", "last_date", "contact_clarifications", "source_type",
+                "verification_status", "status", "posted_date", "submitter_name", "submitter_email",
+                "submitter_phone", "submitter_notes"],
+    "work-requirements": ["bnb_id", "requirement_type", "title", "organization", "state", "city", "quantity",
+                          "required_by", "contact", "source_type", "verification_status", "status",
+                          "posted_date", "submitter_name", "submitter_contact", "submitter_notes"],
+    "resumes": ["bnb_id", "full_name", "email", "phone", "location", "preferred_role", "experience",
+                "linkedin", "resume", "other_info", "created_at"],
+    "vendors": ["bnb_id", "company_name", "contact_person", "email", "phone", "website", "reg_state",
+                "reg_city", "serviceable_locations", "service_categories", "service_categories_other",
+                "services_description", "brochure", "created_at"],
+}
+EXPORT_COLL = {"jobs": "jobs", "tenders": "tenders", "work-requirements": "work_requirements",
+               "resumes": "resumes", "vendors": "vendors"}
+
+
+def _cell(v):
+    if isinstance(v, list):
+        return ", ".join(str(x) for x in v)
+    if isinstance(v, dict):
+        return v.get("filename") or v.get("url") or ""
+    return "" if v is None else str(v)
+
+
+@api_router.get("/admin/export/{module}")
+async def export_module(module: str, status: Optional[str] = None, state: Optional[str] = None):
+    if module not in EXPORT_COLL:
+        raise HTTPException(status_code=404, detail="Unknown module")
+    query = {}
+    if status and status != "all":
+        query["status"] = status
+    if state and state != "all":
+        query["state"] = state
+    docs = await db[EXPORT_COLL[module]].find(query).sort("created_at", -1).to_list(5000)
+    cols = EXPORT_COLUMNS[module]
+    wb = Workbook()
+    ws = wb.active
+    ws.title = module[:31]
+    ws.append(cols)
+    for d in docs:
+        ws.append([_cell(d.get(c)) for c in cols])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StarletteResponse(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="bnb-{module}.xlsx"'},
+    )
+
+
 @api_router.get("/sitemap.xml")
 async def sitemap():
     await archive_expired("jobs")
@@ -625,8 +909,11 @@ async def sitemap():
             f"{base}/privacy", f"{base}/disclaimer", f"{base}/terms"]
     jobs = await db.jobs.find({"status": "active"}, {"slug": 1}).to_list(1000)
     tenders = await db.tenders.find({"status": {"$in": ["active", "archived"]}}, {"slug": 1}).to_list(1000)
+    wrs = await db.work_requirements.find({"status": {"$in": ["active", "archived"]}}, {"slug": 1}).to_list(1000)
     urls += [f"{base}/jobs/{j['slug']}" for j in jobs]
     urls += [f"{base}/tenders/{t['slug']}" for t in tenders]
+    urls += [f"{base}/work-requirements/{w['slug']}" for w in wrs]
+    urls.append(f"{base}/work-requirements")
     items = "".join(f"<url><loc>{u}</loc></url>" for u in urls)
     xml = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{items}</urlset>'
     return StarletteResponse(content=xml, media_type="application/xml")

@@ -43,6 +43,15 @@ Build BitsNdBricks Phase 1: a lean, clean, mobile-first construction opportunity
 - Admin: pending-submissions count badge in header; bulk approve/reject of inbox submissions via checkboxes; admin table horizontally scrollable within its container on small screens.
 - Verified: iteration_3 frontend tests 100% pass; a11y warning on mobile Sheet fixed.
 
+## Implemented (Phase 1 expansion)
+- **Work Requirements** module: public listing `/work-requirements` + SEO detail, submission `/submit/work-requirement`, admin CRUD/publish/verify/archive/reject, ID `BNB-WR-...`, expiry (required_by or +14d), contact validated as 10-digit mobile OR email.
+- **Resume submission** (`/submit/resume`, private, `BNB-R-...`) and **Vendor Registration** (`/submit/vendor`, private, `BNB-V-...`, grouped service-category accordion + serviceable-locations multiselect) with required declarations.
+- **Submit hub** at `/submit` linking to Job/Tender, Work Requirement, Resume, Vendor. Nav adds Work Requirements.
+- **Admin** extended: tabs for Work Req., Resumes, Vendors; inbox now includes WR pending; **per-module Excel export** (openpyxl) with current status/state filter; private record viewer.
+- Public/private separation preserved (submitter, source_type, resumes, vendors never public).
+
 ## Next Tasks
+- Phase 2: Knowledge Hub with TipTap rich-text editor (content types, tags, source URL, author, declaration, `BNB-K-...`, no auto-expiry).
+- Run full testing agent across new modules.
 - Add admin auth when moving beyond demo.
 - Generate sitemap + robots for indexing.
