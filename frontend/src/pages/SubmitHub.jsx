@@ -1,11 +1,12 @@
 import { Link } from "react-router-dom";
-import { Briefcase, ClipboardList, FileUser, Building2, ArrowRight } from "lucide-react";
+import { Briefcase, ClipboardList, FileUser, Building2, BookOpen, ArrowRight } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import Seo from "@/components/Seo";
 
 const options = [
   { to: "/submit/opportunity", icon: Briefcase, title: "Job or Tender", desc: "Post a construction job or tender opportunity for public listing after review." },
   { to: "/submit/work-requirement", icon: ClipboardList, title: "Work Requirement", desc: "Need a contractor, workmen, material or machinery? Post your requirement." },
+  { to: "/submit/knowledge", icon: BookOpen, title: "Knowledge Hub Article", desc: "Share an article, guide or insight with the construction community." },
   { to: "/submit/resume", icon: FileUser, title: "Submit Your Resume", desc: "Share your resume privately for relevant construction opportunities.", private: true },
   { to: "/submit/vendor", icon: Building2, title: "Vendor Registration", desc: "Register your company, services or supplies with BitsNdBricks.", private: true },
 ];

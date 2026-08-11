@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, ArrowRight, Briefcase, FileText } from "lucide-react";
+import { Search, ArrowRight, Briefcase, FileText, ClipboardList } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import Seo from "@/components/Seo";
 import { JobCard } from "@/components/JobCard";
 import { TenderCard } from "@/components/TenderCard";
+import { WorkRequirementCard } from "@/components/WorkRequirementCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
@@ -14,10 +15,12 @@ export default function Home() {
   const [q, setQ] = useState("");
   const [jobs, setJobs] = useState([]);
   const [tenders, setTenders] = useState([]);
+  const [workReqs, setWorkReqs] = useState([]);
 
   useEffect(() => {
     api.get("/jobs", { params: { limit: 6 } }).then((r) => setJobs(r.data)).catch(() => {});
     api.get("/tenders", { params: { limit: 6 } }).then((r) => setTenders(r.data)).catch(() => {});
+    api.get("/work-requirements", { params: { limit: 3 } }).then((r) => setWorkReqs(r.data)).catch(() => {});
   }, []);
 
   const search = (e) => {
@@ -121,6 +124,27 @@ export default function Home() {
           </div>
         )}
       </section>
+
+      {/* Latest Work Requirements */}
+      {workReqs.length > 0 && (
+        <section className="border-t border-slate-200 bg-white">
+          <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8">
+            <div className="flex items-end justify-between">
+              <div>
+                <span className="inline-flex items-center gap-2 rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700"><ClipboardList className="h-3.5 w-3.5" /> New</span>
+                <h2 className="mt-3 font-display text-2xl font-bold tracking-tight text-brand-900">Latest Work Requirements</h2>
+                <p className="mt-1 text-sm text-slate-500">Contractors, workmen, material and machinery needed across India.</p>
+              </div>
+              <Button variant="ghost" data-testid="view-all-wr" onClick={() => navigate("/work-requirements")} className="gap-1 whitespace-nowrap text-brand-600 hover:text-brand-700">
+                View All <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {workReqs.slice(0, 3).map((w) => <WorkRequirementCard key={w.id} item={w} />)}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Submission CTA */}
       <section className="mx-auto max-w-6xl px-4 pb-20 sm:px-6 lg:px-8">

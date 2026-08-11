@@ -81,3 +81,43 @@ body {
         display: contents !important;
     }
 }
+
+/* ---- Rich text (Knowledge Hub) ---- */
+.bnb-prose {
+    color: #334155;
+    line-height: 1.75;
+    font-size: 1rem;
+    word-break: break-word;
+}
+.bnb-prose h1, .bnb-prose h2, .bnb-prose h3 {
+    font-family: "Montserrat", sans-serif;
+    color: #010822;
+    font-weight: 700;
+    line-height: 1.3;
+}
+.bnb-prose h2 { font-size: 1.5rem; margin: 1.75rem 0 0.75rem; }
+.bnb-prose h3 { font-size: 1.25rem; margin: 1.5rem 0 0.5rem; }
+.bnb-prose p { margin: 0.85rem 0; }
+.bnb-prose a { color: #2a4599; text-decoration: underline; }
+.bnb-prose ul { list-style: disc; padding-left: 1.5rem; margin: 0.85rem 0; }
+.bnb-prose ol { list-style: decimal; padding-left: 1.5rem; margin: 0.85rem 0; }
+.bnb-prose li { margin: 0.35rem 0; }
+.bnb-prose blockquote {
+    border-left: 3px solid #2a4599;
+    padding-left: 1rem;
+    color: #64748b;
+    font-style: italic;
+    margin: 1rem 0;
+}
+.bnb-prose img { border-radius: 0.5rem; margin: 1rem 0; max-width: 100%; height: auto; }
+.bnb-prose pre { background: #010822; color: #e2e8f0; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin: 1rem 0; }
+.bnb-prose code { font-family: monospace; font-size: 0.9em; }
+.bnb-prose table { border-collapse: collapse; width: 100%; margin: 1rem 0; display: block; overflow-x: auto; }
+.bnb-prose th, .bnb-prose td { border: 1px solid #cbd5e1; padding: 0.5rem 0.75rem; text-align: left; }
+.bnb-prose th { background: #f1f5f9; font-weight: 600; }
+
+/* TipTap editor placeholder & selection */
+.ProseMirror:focus { outline: none; }
+.ProseMirror .selectedCell { background: rgba(42, 69, 153, 0.08); }
+.ProseMirror table { table-layout: fixed; }
+

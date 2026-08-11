@@ -4,6 +4,7 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { isValidContact } from "@/lib/validate";
 import Seo from "@/components/Seo";
 import { FileUpload } from "@/components/FileUpload";
+import { RichTextEditor } from "@/components/RichTextEditor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -202,6 +203,100 @@ function Editor({ open, onClose, kind, editing, onSaved }) {
   );
 }
 
+function KnowledgeEditor({ open, onClose, editing, onSaved }) {
+  const kEmpty = {
+    title: "", summary: "", content: "", tagsText: "", source_url: "",
+    cover_image: null, attachment: null, author_name: "", author_info: "",
+    source_type: "BNB Research", verification_status: "no_badge", status: "active",
+  };
+  const [form, setForm] = useState(kEmpty);
+  const [saving, setSaving] = useState(false);
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  useEffect(() => {
+    if (editing) {
+      setForm({ ...kEmpty, ...editing, tagsText: (editing.tags || []).join(", ") });
+    } else {
+      setForm(kEmpty);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, open]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const tags = form.tagsText.split(",").map((t) => t.trim()).filter(Boolean);
+      const payload = {
+        title: form.title || null, summary: form.summary || null, content: form.content || null,
+        tags, source_url: form.source_url || null, cover_image: form.cover_image,
+        attachment: form.attachment, author_name: form.author_name || null,
+        author_info: form.author_info || null, source_type: form.source_type,
+        verification_status: form.verification_status, status: form.status, declaration: true,
+      };
+      if (editing) {
+        await api.put(`/admin/knowledge/${editing.id}`, payload);
+        toast.success("Updated");
+      } else {
+        await api.post("/admin/knowledge", payload);
+        toast.success("Created");
+      }
+      onSaved();
+      onClose();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+        <DialogHeader><DialogTitle className="font-display">{editing ? "Edit article" : "Create article"}</DialogTitle></DialogHeader>
+        <div className="space-y-4">
+          <Field label="Title"><Input data-testid="kadmin-field-title" value={form.title} onChange={(e) => set("title", e.target.value)} /></Field>
+          <Field label="Summary"><Textarea data-testid="kadmin-field-summary" rows={2} value={form.summary} onChange={(e) => set("summary", e.target.value)} /></Field>
+          <Field label="Content"><RichTextEditor value={form.content} onChange={(v) => set("content", v)} testid="kadmin-editor" /></Field>
+          <Field label="Tags (comma-separated)"><Input data-testid="kadmin-field-tags" placeholder="Regulations, Safety" value={form.tagsText} onChange={(e) => set("tagsText", e.target.value)} /></Field>
+          <div className="grid grid-cols-2 gap-3">
+            <FileUpload label="Cover image" value={form.cover_image} onChange={(v) => set("cover_image", v)} testid="kadmin-field-cover" />
+            <FileUpload label="Attachment" value={form.attachment} onChange={(v) => set("attachment", v)} testid="kadmin-field-attachment" />
+          </div>
+          <Field label="Source URL"><Input data-testid="kadmin-field-source" value={form.source_url} onChange={(e) => set("source_url", e.target.value)} /></Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Author name"><Input value={form.author_name} onChange={(e) => set("author_name", e.target.value)} /></Field>
+            <Field label="Author info"><Input value={form.author_info} onChange={(e) => set("author_info", e.target.value)} /></Field>
+          </div>
+          <div className="grid grid-cols-3 gap-3 border-t border-slate-100 pt-4">
+            <Field label="Source type">
+              <Select value={form.source_type} onValueChange={(v) => set("source_type", v)}>
+                <SelectTrigger data-testid="kadmin-field-sourcetype"><SelectValue /></SelectTrigger>
+                <SelectContent>{SOURCE_TYPES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field>
+            <Field label="Verification">
+              <Select value={form.verification_status} onValueChange={(v) => set("verification_status", v)}>
+                <SelectTrigger data-testid="kadmin-field-verification"><SelectValue /></SelectTrigger>
+                <SelectContent>{VERIFICATION_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field>
+            <Field label="Status">
+              <Select value={form.status} onValueChange={(v) => set("status", v)}>
+                <SelectTrigger data-testid="kadmin-field-status"><SelectValue /></SelectTrigger>
+                <SelectContent>{STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button data-testid="kadmin-save-button" onClick={save} disabled={saving} className="bg-brand-600 text-white hover:bg-brand-700">{saving ? "Saving..." : "Save"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function SubmitterDialog({ item, onClose }) {
   if (!item) return null;
   return (
@@ -271,8 +366,19 @@ export default function Admin() {
   const [pendingCount, setPendingCount] = useState(0);
   const [selected, setSelected] = useState(() => new Set());
   const [detail, setDetail] = useState(null);
+  const [kEditorOpen, setKEditorOpen] = useState(false);
+  const [kEditing, setKEditing] = useState(null);
 
-  const kindPath = (k) => (k === "workrequirement" ? "work-requirements" : `${k}s`);
+  const openCreate = () => {
+    if (kind === "knowledge") { setKEditing(null); setKEditorOpen(true); }
+    else { setEditing(null); setEditorOpen(true); }
+  };
+  const openEdit = (it) => {
+    if (it._type === "knowledge") { setKEditing(it); setKEditorOpen(true); }
+    else { setEditing(it); setEditorOpen(true); }
+  };
+
+  const kindPath = (k) => (k === "workrequirement" ? "work-requirements" : k === "knowledge" ? "knowledge" : `${k}s`);
   const isPrivate = kind === "resume" || kind === "vendor";
 
   const logout = () => {
@@ -403,6 +509,7 @@ export default function Admin() {
               <TabsTrigger value="job" data-testid="admin-tab-jobs">Jobs</TabsTrigger>
               <TabsTrigger value="tender" data-testid="admin-tab-tenders">Tenders</TabsTrigger>
               <TabsTrigger value="workrequirement" data-testid="admin-tab-wr">Work Req.</TabsTrigger>
+              <TabsTrigger value="knowledge" data-testid="admin-tab-knowledge">Knowledge</TabsTrigger>
               <TabsTrigger value="inbox" data-testid="admin-tab-inbox">Inbox{kind === "inbox" && items.length ? ` (${items.length})` : ""}</TabsTrigger>
               <TabsTrigger value="resume" data-testid="admin-tab-resumes">Resumes</TabsTrigger>
               <TabsTrigger value="vendor" data-testid="admin-tab-vendors">Vendors</TabsTrigger>
@@ -422,7 +529,7 @@ export default function Admin() {
               <Download className="h-4 w-4" /> Export Excel
             </Button>
             {!isPrivate && kind !== "inbox" && (
-              <Button data-testid="admin-create-button" onClick={() => { setEditing(null); setEditorOpen(true); }} className="gap-2 bg-brand-600 text-white hover:bg-brand-700">
+              <Button data-testid="admin-create-button" onClick={openCreate} className="gap-2 bg-brand-600 text-white hover:bg-brand-700">
                 <Plus className="h-4 w-4" /> Create
               </Button>
             )}
@@ -523,7 +630,7 @@ export default function Admin() {
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
                       <button title="View submitter" data-testid={`admin-submitter-${it.bnb_id}`} onClick={() => setSubmitter(it)} className="rounded p-1.5 text-slate-500 hover:bg-slate-100"><Eye className="h-4 w-4" /></button>
-                      <button title="Edit" data-testid={`admin-edit-${it.bnb_id}`} onClick={() => { setEditing(it); setEditorOpen(true); }} className="rounded p-1.5 text-slate-500 hover:bg-slate-100"><Pencil className="h-4 w-4" /></button>
+                      <button title="Edit" data-testid={`admin-edit-${it.bnb_id}`} onClick={() => openEdit(it)} className="rounded p-1.5 text-slate-500 hover:bg-slate-100"><Pencil className="h-4 w-4" /></button>
                       {it.status !== "active" && (
                         <button title="Approve & publish" data-testid={`admin-publish-${it.bnb_id}`} onClick={() => patch(it.id, { status: "active" }, it._type)} className="rounded p-1.5 text-green-600 hover:bg-green-50"><Send className="h-4 w-4" /></button>
                       )}
@@ -562,6 +669,7 @@ export default function Admin() {
       </Dialog>
 
       <Editor open={editorOpen} onClose={() => setEditorOpen(false)} kind={kind === "inbox" ? (editing?._type || "job") : kind} editing={editing} onSaved={load} />
+      <KnowledgeEditor open={kEditorOpen} onClose={() => setKEditorOpen(false)} editing={kEditing} onSaved={load} />
       <SubmitterDialog item={submitter} onClose={() => setSubmitter(null)} />
     </div>
   );

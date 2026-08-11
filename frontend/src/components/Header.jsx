@@ -9,6 +9,7 @@ const links = [
   { to: "/jobs", label: "Jobs", id: "jobs" },
   { to: "/tenders", label: "Tenders", id: "tenders" },
   { to: "/work-requirements", label: "Work Requirements", id: "work" },
+  { to: "/knowledge-hub", label: "Knowledge Hub", id: "knowledge" },
 ];
 
 export const Header = () => {

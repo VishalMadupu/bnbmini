@@ -50,8 +50,17 @@ Build BitsNdBricks Phase 1: a lean, clean, mobile-first construction opportunity
 - **Admin** extended: tabs for Work Req., Resumes, Vendors; inbox now includes WR pending; **per-module Excel export** (openpyxl) with current status/state filter; private record viewer.
 - Public/private separation preserved (submitter, source_type, resumes, vendors never public).
 
-## Next Tasks
-- Phase 2: Knowledge Hub with TipTap rich-text editor (content types, tags, source URL, author, declaration, `BNB-K-...`, no auto-expiry).
-- Run full testing agent across new modules.
-- Add admin auth when moving beyond demo.
-- Generate sitemap + robots for indexing.
+## Implemented (Phase 2 — 2026-06-11)
+- **Knowledge Hub** module: public listing `/knowledge-hub` (hero, search + topic/tag filter), SEO detail `/knowledge-hub/:slug` (Article JSON-LD, rich HTML render, author bio, attachment/source links), contribution form `/submit/knowledge`.
+- **TipTap 3 rich-text editor** (`RichTextEditor.jsx`): bold/italic/underline/strike, H2/H3, lists, blockquote, links, in-editor image upload (via `/api/upload`), tables; supports pasting formatted content from Word/Google Docs.
+- Fields: title, summary, content (HTML), tags (comma-separated), cover image, attachment, source URL, author name/info, **mandatory declaration checkbox**. ID `BNB-K-YYYY-00001`, **no auto-expiry**.
+- Backend: `GET /api/knowledge`, `GET /api/knowledge/{slug}` (slug or BNB-id), `POST /api/submissions/knowledge` (validates declaration + non-empty content → pending), admin CRUD `/api/admin/knowledge` (+ `/status`), export `/api/admin/export/knowledge`, `meta.knowledge_tags`, sitemap includes knowledge URLs.
+- **Admin**: new Knowledge tab + `KnowledgeEditor` (rich editor) for create/edit/publish/verify; status filter (`admin-status-filter`) applies.
+- **Homepage**: "Latest Work Requirements" strip (`view-all-wr`) shows up to 3 active WRs.
+- **JobDetail**: Apply Now button only renders when `applicant_url` is present (no dead clicks) — verified.
+- Tested: iteration_4 — backend 54/54 pytest pass; frontend 100% of testable flows (Knowledge submit/publish/detail, declaration validation, admin exports, homepage strip, private data isolation).
+
+## Next Tasks / Backlog
+- **P2**: Vendor Directory — turn approved vendors into a searchable public directory (deferred, user: "later").
+- **P1**: Admin authentication is password-gated for demo; add proper auth when moving beyond demo.
+- Optional a11y: add DialogDescription to Radix dialogs to clear console warnings (non-functional).

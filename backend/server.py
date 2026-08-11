@@ -420,10 +420,13 @@ async def meta():
     j_states, j_cities, j_map = await loc("jobs", ["active"])
     t_states, t_cities, t_map = await loc("tenders", ["active", "archived"])
     w_states, w_cities, w_map = await loc("work_requirements", ["active", "archived"])
+    kdocs = await db.knowledge.find({"status": "active"}, {"tags": 1, "_id": 0}).to_list(2000)
+    k_tags = sorted({t for d in kdocs for t in (d.get("tags") or [])})
     return {
         "job_states": j_states, "job_cities": j_cities, "job_cities_by_state": j_map,
         "tender_states": t_states, "tender_cities": t_cities, "tender_cities_by_state": t_map,
         "wr_states": w_states, "wr_cities": w_cities, "wr_cities_by_state": w_map,
+        "knowledge_tags": k_tags,
     }
 
 
@@ -842,6 +845,123 @@ async def admin_delete_vendor(item_id: str):
     return {"message": "deleted"}
 
 
+# ---------- Knowledge Hub ----------
+class KnowledgeIn(BaseModel):
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    content: Optional[str] = None
+    tags: List[str] = []
+    source_url: Optional[str] = None
+    cover_image: Optional[FileRef] = None
+    attachment: Optional[FileRef] = None
+    author_name: Optional[str] = None
+    author_info: Optional[str] = None
+    source_type: SourceType = "BNB Research"
+    verification_status: VerificationStatus = "no_badge"
+    status: ListingStatus = "active"
+    declaration: bool = False
+
+
+class KnowledgeSubmit(BaseModel):
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    content: Optional[str] = None
+    tags: List[str] = []
+    source_url: Optional[str] = None
+    cover_image: Optional[FileRef] = None
+    attachment: Optional[FileRef] = None
+    author_name: Optional[str] = None
+    author_info: Optional[str] = None
+    declaration: bool = False
+
+
+async def make_knowledge_doc(data: dict) -> dict:
+    posted = now_iso()
+    bnb_id = await next_bnb_id("K")
+    doc = {
+        "id": str(uuid.uuid4()), "bnb_id": bnb_id, "posted_date": posted,
+        "created_at": posted, "updated_at": posted, **data,
+    }
+    doc["slug"] = f'{slugify(data.get("title") or "article")}-{bnb_id.lower()}'
+    return doc
+
+
+@api_router.get("/knowledge")
+async def list_knowledge(search: Optional[str] = None, tag: Optional[str] = None, limit: int = 100):
+    query = {"status": "active"}
+    if tag and tag != "all":
+        query["tags"] = tag
+    if search:
+        rx = {"$regex": re.escape(search), "$options": "i"}
+        query["$or"] = [{"title": rx}, {"summary": rx}, {"tags": rx}, {"author_name": rx}]
+    docs = await db.knowledge.find(query).sort("posted_date", -1).to_list(limit)
+    return [public_view(d) for d in docs]
+
+
+@api_router.get("/knowledge/{slug}")
+async def get_knowledge(slug: str):
+    doc = await db.knowledge.find_one({"slug": slug}) or await db.knowledge.find_one({"bnb_id": slug.upper()})
+    if not doc or doc.get("status") != "active":
+        raise HTTPException(status_code=404, detail="Article not found")
+    return public_view(doc)
+
+
+@api_router.post("/submissions/knowledge")
+async def submit_knowledge(payload: KnowledgeSubmit):
+    data = payload.model_dump()
+    if not data.get("declaration"):
+        raise HTTPException(status_code=422, detail="Please confirm the declaration before submitting")
+    if not (data.get("content") or "").strip():
+        raise HTTPException(status_code=422, detail="Please add some content before submitting")
+    data.update({"source_type": "Organization Submission", "verification_status": "no_badge", "status": "pending"})
+    doc = await make_knowledge_doc(data)
+    await db.knowledge.insert_one(doc)
+    await send_submission_email("knowledge article", doc)
+    return {"message": "submitted", "bnb_id": doc["bnb_id"]}
+
+
+@api_router.get("/admin/knowledge")
+async def admin_list_knowledge(status: Optional[str] = None):
+    query = {} if not status or status == "all" else {"status": status}
+    docs = await db.knowledge.find(query).sort("created_at", -1).to_list(1000)
+    return [clean(d) for d in docs]
+
+
+@api_router.post("/admin/knowledge")
+async def admin_create_knowledge(payload: KnowledgeIn):
+    doc = await make_knowledge_doc(payload.model_dump())
+    await db.knowledge.insert_one(doc)
+    return clean(doc)
+
+
+@api_router.put("/admin/knowledge/{item_id}")
+async def admin_update_knowledge(item_id: str, payload: KnowledgeIn):
+    existing = await db.knowledge.find_one({"id": item_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Not found")
+    data = payload.model_dump()
+    data["updated_at"] = now_iso()
+    data["slug"] = f'{slugify(data.get("title") or "article")}-{existing["bnb_id"].lower()}'
+    await db.knowledge.update_one({"id": item_id}, {"$set": data})
+    return clean(await db.knowledge.find_one({"id": item_id}))
+
+
+@api_router.patch("/admin/knowledge/{item_id}/status")
+async def admin_knowledge_status(item_id: str, payload: StatusUpdate):
+    upd = {k: v for k, v in payload.model_dump().items() if v is not None}
+    upd["updated_at"] = now_iso()
+    res = await db.knowledge.update_one({"id": item_id}, {"$set": upd})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    return clean(await db.knowledge.find_one({"id": item_id}))
+
+
+@api_router.delete("/admin/knowledge/{item_id}")
+async def admin_delete_knowledge(item_id: str):
+    await db.knowledge.delete_one({"id": item_id})
+    return {"message": "deleted"}
+
+
 # ---------- Excel Export ----------
 EXPORT_COLUMNS = {
     "jobs": ["bnb_id", "title", "organization", "state", "city", "category", "collar_type", "trade",
@@ -860,9 +980,11 @@ EXPORT_COLUMNS = {
     "vendors": ["bnb_id", "company_name", "contact_person", "email", "phone", "website", "reg_state",
                 "reg_city", "serviceable_locations", "service_categories", "service_categories_other",
                 "services_description", "brochure", "created_at"],
+    "knowledge": ["bnb_id", "title", "summary", "tags", "author_name", "author_info", "source_url",
+                  "source_type", "verification_status", "status", "posted_date"],
 }
 EXPORT_COLL = {"jobs": "jobs", "tenders": "tenders", "work-requirements": "work_requirements",
-               "resumes": "resumes", "vendors": "vendors"}
+               "resumes": "resumes", "vendors": "vendors", "knowledge": "knowledge"}
 
 
 def _cell(v):
@@ -912,8 +1034,11 @@ async def sitemap():
     wrs = await db.work_requirements.find({"status": {"$in": ["active", "archived"]}}, {"slug": 1}).to_list(1000)
     urls += [f"{base}/jobs/{j['slug']}" for j in jobs]
     urls += [f"{base}/tenders/{t['slug']}" for t in tenders]
+    knos = await db.knowledge.find({"status": "active"}, {"slug": 1}).to_list(1000)
     urls += [f"{base}/work-requirements/{w['slug']}" for w in wrs]
+    urls += [f"{base}/knowledge-hub/{k['slug']}" for k in knos]
     urls.append(f"{base}/work-requirements")
+    urls.append(f"{base}/knowledge-hub")
     items = "".join(f"<url><loc>{u}</loc></url>" for u in urls)
     xml = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{items}</urlset>'
     return StarletteResponse(content=xml, media_type="application/xml")

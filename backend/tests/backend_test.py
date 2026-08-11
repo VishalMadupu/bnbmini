@@ -13,7 +13,7 @@ if not BASE_URL:
                 break
 BASE_URL = BASE_URL.rstrip("/")
 API = f"{BASE_URL}/api"
-ADMIN_PASSWORD = "bitsadmin123"
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Hitchhiker@360")
 
 
 @pytest.fixture(scope="session")

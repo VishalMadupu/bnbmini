@@ -8,6 +8,9 @@ import Tenders from "@/pages/Tenders";
 import TenderDetail from "@/pages/TenderDetail";
 import WorkRequirements from "@/pages/WorkRequirements";
 import WorkRequirementDetail from "@/pages/WorkRequirementDetail";
+import KnowledgeHub from "@/pages/KnowledgeHub";
+import KnowledgeDetail from "@/pages/KnowledgeDetail";
+import KnowledgeSubmit from "@/pages/KnowledgeSubmit";
 import Submit from "@/pages/Submit";
 import SubmitHub from "@/pages/SubmitHub";
 import WorkRequirementSubmit from "@/pages/WorkRequirementSubmit";
@@ -28,6 +31,9 @@ function App() {
           <Route path="/tenders/:slug" element={<TenderDetail />} />
           <Route path="/work-requirements" element={<WorkRequirements />} />
           <Route path="/work-requirements/:slug" element={<WorkRequirementDetail />} />
+          <Route path="/knowledge-hub" element={<KnowledgeHub />} />
+          <Route path="/knowledge-hub/:slug" element={<KnowledgeDetail />} />
+          <Route path="/submit/knowledge" element={<KnowledgeSubmit />} />
           <Route path="/submit" element={<SubmitHub />} />
           <Route path="/submit/opportunity" element={<Submit />} />
           <Route path="/submit/work-requirement" element={<WorkRequirementSubmit />} />
