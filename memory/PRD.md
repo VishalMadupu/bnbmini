@@ -71,6 +71,9 @@ Build BitsNdBricks Phase 1: a lean, clean, mobile-first construction opportunity
 - **Exports**: all 6 modules; `record_type`/`origin` added; Knowledge adds `content_type`/`linkedin`.
 - Tested: iteration_5 — backend 82/82 pytest pass, frontend 100% of critical flows, no product bugs. Regression suite: `/app/backend/tests/test_universal_bnb.py`.
 
+## Sample Data (2026-06-11)
+- Seeded **6 Work Requirements** (BNB-000145–150: contractor, labour, material×2, MEP consultant, machinery) and **6 Knowledge Hub articles** (BNB-000151–156) with rich HTML (headings, lists, tables, blockquotes) across all 3 content types (Article / Construction Technology / Industry News). Seeder: `/app/backend/seed_samples.py`. All published/active and live on public endpoints.
+
 ## Next Tasks / Backlog
 - **P2**: Vendor Directory — searchable public directory of approved vendors (deferred, user: "later").
 - **P1**: Real admin authentication before going live (currently password-gated demo).
