@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    margin: 0;
+    font-family: "Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+@layer base {
+    :root {
+        --background: 210 40% 98%;
+        --foreground: 227 94% 7%;
+        --card: 0 0% 100%;
+        --card-foreground: 227 94% 7%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 227 94% 7%;
+        --primary: 225 57% 38%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 210 40% 96.1%;
+        --secondary-foreground: 227 94% 7%;
+        --muted: 210 40% 96.1%;
+        --muted-foreground: 215 16% 42%;
+        --accent: 210 40% 96.1%;
+        --accent-foreground: 227 94% 7%;
+        --destructive: 0 72% 51%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 214 32% 91%;
+        --input: 214 32% 91%;
+        --ring: 225 57% 38%;
+        --radius: 0.5rem;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+    body {
+        @apply bg-background text-foreground;
+    }
+    h1, h2, h3, h4, h5 {
+        font-family: "Montserrat", sans-serif;
+    }
+}
+
+.font-display {
+    font-family: "Montserrat", sans-serif;
+}
+
+/* Landscape phones & short viewports: tighten vertical spacing so nothing feels cramped */
+@media (max-height: 500px) and (orientation: landscape) {
+    header.sticky {
+        position: static;
+    }
+    .bnb-hero-inner {
+        padding-top: 2rem !important;
+        padding-bottom: 2rem !important;
+    }
+    .bnb-hero-inner h1 {
+        font-size: 1.875rem !important;
+        line-height: 2.25rem !important;
+    }
+    .bnb-hero-inner form {
+        margin-top: 1.25rem !important;
+    }
+}
+
+@keyframes fade-in-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+    animation: fade-in-up 0.4s ease-out both;
+}
+
+@layer base {
+    [data-debug-wrapper="true"] {
+        display: contents !important;
+    }
+}

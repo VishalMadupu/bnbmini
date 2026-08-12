@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://job-tender-hub.preview.emergentagent.com/api/sitemap.xml
