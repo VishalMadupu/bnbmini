@@ -1,3 +1,4 @@
+"use clinet"
 import { useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { Layout } from "@/components/Layout";

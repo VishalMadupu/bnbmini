@@ -2,7 +2,6 @@ from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Query, 
 from starlette.responses import JSONResponse, Response as StarletteResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import re
 import logging
@@ -17,13 +16,17 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Literal
 from datetime import datetime, timezone, timedelta
+from sqlalchemy import select, insert, update, delete, or_, and_, text, func
+import json
+
+from db import (
+    engine, async_session, metadata, init_db, dispose_db,
+    counters, files, jobs, tenders, work_requirements,
+    knowledge, resumes, vendors, TABLE_MAP,
+)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
-
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
 
 # ---------------- Object Storage ----------------
 STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
@@ -145,7 +148,23 @@ app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
 
-# ---------------- Helpers ----------------
+# ---------------- DB Helpers ----------------
+def row_to_dict(row) -> dict:
+    """Convert a SQLAlchemy Row to a plain dict."""
+    if row is None:
+        return None
+    return dict(row._mapping)
+
+
+def serialize_attachment(val):
+    """Convert Pydantic FileRef (or dict) to JSON-safe dict for storage."""
+    if val is None:
+        return None
+    if hasattr(val, "model_dump"):
+        return val.model_dump()
+    return val
+
+
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
@@ -158,15 +177,27 @@ def slugify(text: str) -> str:
 
 
 async def next_bnb_id(kind: str = "") -> str:
-    """One continuous universal ID across all modules, e.g. BNB-000001. Never resets.
-    `kind` is accepted for backwards-compatible call sites but no longer affects the ID."""
-    doc = await db.counters.find_one_and_update(
-        {"_id": "bnb_universal"},
-        {"$inc": {"seq": 1}},
-        upsert=True,
-        return_document=True,
-    )
-    return f"BNB-{doc['seq']:06d}"
+    """One continuous universal ID across all modules, e.g. BNB-000001. Never resets."""
+    async with async_session() as session:
+        async with session.begin():
+            # Try to update existing counter
+            result = await session.execute(
+                update(counters)
+                .where(counters.c.id == "bnb_universal")
+                .values(seq=counters.c.seq + 1)
+            )
+            if result.rowcount == 0:
+                # Counter doesn't exist yet, insert it
+                await session.execute(
+                    insert(counters).values(id="bnb_universal", seq=1)
+                )
+                return "BNB-000001"
+            # Fetch the updated value
+            row = await session.execute(
+                select(counters.c.seq).where(counters.c.id == "bnb_universal")
+            )
+            seq = row.scalar_one()
+            return f"BNB-{seq:06d}"
 
 
 def compute_expiry(last_date: Optional[str], posted_date: str) -> str:
@@ -189,14 +220,21 @@ def extract_bnb_id(slug_or_id: str) -> Optional[str]:
     return m.group(1).upper() if m else None
 
 
-async def archive_expired(collection):
-    await db[collection].update_many(
-        {"status": "active", "expiry_date": {"$lt": now_iso()}},
-        {"$set": {"status": "archived"}},
-    )
+async def archive_expired(collection_name: str):
+    table = TABLE_MAP[collection_name]
+    async with async_session() as session:
+        async with session.begin():
+            await session.execute(
+                update(table)
+                .where(and_(table.c.status == "active", table.c.expiry_date < now_iso()))
+                .values(status="archived")
+            )
 
 
 def clean(doc: dict) -> dict:
+    """No _id in MySQL, but keep for API compat."""
+    if doc is None:
+        return None
     doc.pop("_id", None)
     return doc
 
@@ -310,6 +348,7 @@ class SubmissionIn(BaseModel):
 async def make_job_doc(data: dict) -> dict:
     posted = now_iso()
     bnb_id = await next_bnb_id()
+    data["attachment"] = serialize_attachment(data.get("attachment"))
     doc = {
         "id": str(uuid.uuid4()),
         "bnb_id": bnb_id,
@@ -328,6 +367,7 @@ async def make_job_doc(data: dict) -> dict:
 async def make_tender_doc(data: dict) -> dict:
     posted = now_iso()
     bnb_id = await next_bnb_id()
+    data["attachment"] = serialize_attachment(data.get("attachment"))
     doc = {
         "id": str(uuid.uuid4()),
         "bnb_id": bnb_id,
@@ -343,43 +383,54 @@ async def make_tender_doc(data: dict) -> dict:
     return doc
 
 
-# ---------------- Public: Jobs ----------------
-def apply_filters(query: dict, search, state, city, category):
+# ---------------- SQL filter helpers ----------------
+def apply_sql_filters(table, conditions, search, state, city, category):
+    """Build a list of SQLAlchemy WHERE clauses."""
     if state and state != "all":
-        query["state"] = state
+        conditions.append(table.c.state == state)
     if city and city != "all":
-        query["city"] = city
-    if category and category != "all":
-        query["category"] = category
+        conditions.append(table.c.city == city)
+    if category and category != "all" and hasattr(table.c, "category"):
+        conditions.append(table.c.category == category)
     if search:
-        rx = {"$regex": re.escape(search), "$options": "i"}
-        query["$or"] = [
-            {"title": rx}, {"organization": rx}, {"city": rx},
-            {"state": rx}, {"bnb_id": rx},
-        ]
-    return query
+        like = f"%{search}%"
+        search_cols = [table.c.title, table.c.organization, table.c.city, table.c.state, table.c.bnb_id]
+        conditions.append(or_(*[c.ilike(like) for c in search_cols if hasattr(table.c, c.key)]))
+    return conditions
 
 
+# ---------------- Public: Jobs ----------------
 @api_router.get("/jobs")
 async def list_jobs(search: Optional[str] = None, state: Optional[str] = None,
                     city: Optional[str] = None, category: Optional[str] = None,
                     limit: int = 100):
     await archive_expired("jobs")
-    query = apply_filters({"status": "active"}, search, state, city, category)
-    docs = await db.jobs.find(query).sort("posted_date", -1).to_list(limit)
-    return [public_view(d) for d in docs]
+    conditions = [jobs.c.status == "active"]
+    conditions = apply_sql_filters(jobs, conditions, search, state, city, category)
+    async with async_session() as session:
+        result = await session.execute(
+            select(jobs).where(and_(*conditions)).order_by(jobs.c.posted_date.desc()).limit(limit)
+        )
+        rows = result.fetchall()
+    return [public_view(row_to_dict(r)) for r in rows]
 
 
 @api_router.get("/jobs/{slug}")
 async def get_job(slug: str):
     await archive_expired("jobs")
     bnb_id = extract_bnb_id(slug) or slug.upper()
-    doc = await db.jobs.find_one({"bnb_id": bnb_id})
+    async with async_session() as session:
+        result = await session.execute(select(jobs).where(jobs.c.bnb_id == bnb_id))
+        doc = result.fetchone()
+        if not doc:
+            result = await session.execute(select(jobs).where(jobs.c.slug == slug))
+            doc = result.fetchone()
     if not doc:
-        doc = await db.jobs.find_one({"slug": slug})
-    if not doc or doc.get("status") in ("draft", "pending", "rejected"):
         raise HTTPException(status_code=404, detail="Job not found")
-    return public_view(doc)
+    d = row_to_dict(doc)
+    if d.get("status") in ("draft", "pending", "rejected"):
+        raise HTTPException(status_code=404, detail="Job not found")
+    return public_view(d)
 
 
 # ---------------- Public: Tenders ----------------
@@ -388,43 +439,65 @@ async def list_tenders(search: Optional[str] = None, state: Optional[str] = None
                        city: Optional[str] = None, category: Optional[str] = None,
                        include_expired: bool = False, limit: int = 100):
     await archive_expired("tenders")
-    base = {"status": {"$in": ["active", "archived"]}} if include_expired else {"status": "active"}
-    query = apply_filters(base, search, state, city, category)
-    docs = await db.tenders.find(query).sort("posted_date", -1).to_list(limit)
-    return [public_view(d) for d in docs]
+    if include_expired:
+        conditions = [tenders.c.status.in_(["active", "archived"])]
+    else:
+        conditions = [tenders.c.status == "active"]
+    conditions = apply_sql_filters(tenders, conditions, search, state, city, category)
+    async with async_session() as session:
+        result = await session.execute(
+            select(tenders).where(and_(*conditions)).order_by(tenders.c.posted_date.desc()).limit(limit)
+        )
+        rows = result.fetchall()
+    return [public_view(row_to_dict(r)) for r in rows]
 
 
 @api_router.get("/tenders/{slug}")
 async def get_tender(slug: str):
     await archive_expired("tenders")
     bnb_id = extract_bnb_id(slug) or slug.upper()
-    doc = await db.tenders.find_one({"bnb_id": bnb_id})
+    async with async_session() as session:
+        result = await session.execute(select(tenders).where(tenders.c.bnb_id == bnb_id))
+        doc = result.fetchone()
+        if not doc:
+            result = await session.execute(select(tenders).where(tenders.c.slug == slug))
+            doc = result.fetchone()
     if not doc:
-        doc = await db.tenders.find_one({"slug": slug})
-    if not doc or doc.get("status") in ("draft", "pending", "rejected"):
         raise HTTPException(status_code=404, detail="Tender not found")
-    return public_view(doc)
+    d = row_to_dict(doc)
+    if d.get("status") in ("draft", "pending", "rejected"):
+        raise HTTPException(status_code=404, detail="Tender not found")
+    return public_view(d)
 
 
 # ---------------- Meta (filter options) ----------------
 @api_router.get("/meta")
 async def meta():
-    async def loc(coll, statuses):
-        docs = await db[coll].find({"status": {"$in": statuses}}, {"state": 1, "city": 1, "_id": 0}).to_list(2000)
-        states = sorted({d["state"] for d in docs if d.get("state")})
-        cities = sorted({d["city"] for d in docs if d.get("city")})
+    async def loc(table, statuses):
+        async with async_session() as session:
+            result = await session.execute(
+                select(table.c.state, table.c.city).where(table.c.status.in_(statuses))
+            )
+            rows = result.fetchall()
+        states = sorted({r.state for r in rows if r.state})
+        cities = sorted({r.city for r in rows if r.city})
         by_state = {}
-        for d in docs:
-            s, c = d.get("state"), d.get("city")
+        for r in rows:
+            s, c = r.state, r.city
             if s and c:
                 by_state.setdefault(s, set()).add(c)
         return states, cities, {k: sorted(v) for k, v in by_state.items()}
 
-    j_states, j_cities, j_map = await loc("jobs", ["active"])
-    t_states, t_cities, t_map = await loc("tenders", ["active", "archived"])
-    w_states, w_cities, w_map = await loc("work_requirements", ["active", "archived"])
-    kdocs = await db.knowledge.find({"status": "active"}, {"tags": 1, "_id": 0}).to_list(2000)
-    k_tags = sorted({t for d in kdocs for t in (d.get("tags") or [])})
+    j_states, j_cities, j_map = await loc(jobs, ["active"])
+    t_states, t_cities, t_map = await loc(tenders, ["active", "archived"])
+    w_states, w_cities, w_map = await loc(work_requirements, ["active", "archived"])
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(knowledge.c.tags).where(knowledge.c.status == "active")
+        )
+        rows = result.fetchall()
+    k_tags = sorted({t for r in rows for t in (r.tags or [])})
     return {
         "job_states": j_states, "job_cities": j_cities, "job_cities_by_state": j_map,
         "tender_states": t_states, "tender_cities": t_cities, "tender_cities_by_state": t_map,
@@ -464,7 +537,9 @@ async def create_submission(payload: SubmissionIn):
             "category": None, **common,
         }
         doc = await make_job_doc(job)
-        await db.jobs.insert_one(doc)
+        async with async_session() as session:
+            async with session.begin():
+                await session.execute(insert(jobs).values(**doc))
     else:
         tender = {
             "title": data.get("title"), "organization": data.get("organization"),
@@ -479,7 +554,9 @@ async def create_submission(payload: SubmissionIn):
             "category": None, **common,
         }
         doc = await make_tender_doc(tender)
-        await db.tenders.insert_one(doc)
+        async with async_session() as session:
+            async with session.begin():
+                await session.execute(insert(tenders).values(**doc))
     await send_submission_email(kind, doc)
     return {"message": "submitted", "bnb_id": doc["bnb_id"]}
 
@@ -502,16 +579,23 @@ async def upload(file: UploadFile = File(...)):
         "is_deleted": False,
         "created_at": now_iso(),
     }
-    await db.files.insert_one(dict(rec))
+    async with async_session() as session:
+        async with session.begin():
+            await session.execute(insert(files).values(**rec))
     url = f"/api/files/{file_id}"
     return {"file_id": file_id, "filename": file.filename, "url": url}
 
 
 @api_router.get("/files/{file_id}")
 async def download(file_id: str):
-    rec = await db.files.find_one({"id": file_id, "is_deleted": False})
+    async with async_session() as session:
+        result = await session.execute(
+            select(files).where(and_(files.c.id == file_id, files.c.is_deleted == False))
+        )
+        rec = result.fetchone()
     if not rec:
         raise HTTPException(status_code=404, detail="File not found")
+    rec = row_to_dict(rec)
     data, content_type = get_object(rec["storage_path"])
     return Response(
         content=data,
@@ -535,59 +619,85 @@ async def admin_login(payload: AdminLogin):
 @api_router.get("/admin/jobs")
 async def admin_list_jobs(status: Optional[str] = None):
     await archive_expired("jobs")
-    query = {} if not status or status == "all" else {"status": status}
-    docs = await db.jobs.find(query).sort("created_at", -1).to_list(1000)
-    return [clean(d) for d in docs]
+    async with async_session() as session:
+        q = select(jobs)
+        if status and status != "all":
+            q = q.where(jobs.c.status == status)
+        result = await session.execute(q.order_by(jobs.c.created_at.desc()).limit(1000))
+        rows = result.fetchall()
+    return [clean(row_to_dict(r)) for r in rows]
 
 
 @api_router.get("/admin/tenders")
 async def admin_list_tenders(status: Optional[str] = None):
     await archive_expired("tenders")
-    query = {} if not status or status == "all" else {"status": status}
-    docs = await db.tenders.find(query).sort("created_at", -1).to_list(1000)
-    return [clean(d) for d in docs]
+    async with async_session() as session:
+        q = select(tenders)
+        if status and status != "all":
+            q = q.where(tenders.c.status == status)
+        result = await session.execute(q.order_by(tenders.c.created_at.desc()).limit(1000))
+        rows = result.fetchall()
+    return [clean(row_to_dict(r)) for r in rows]
 
 
 @api_router.post("/admin/jobs")
 async def admin_create_job(payload: JobIn):
     doc = await make_job_doc(payload.model_dump())
-    await db.jobs.insert_one(doc)
+    async with async_session() as session:
+        async with session.begin():
+            await session.execute(insert(jobs).values(**doc))
     return clean(doc)
 
 
 @api_router.post("/admin/tenders")
 async def admin_create_tender(payload: TenderIn):
     doc = await make_tender_doc(payload.model_dump())
-    await db.tenders.insert_one(doc)
+    async with async_session() as session:
+        async with session.begin():
+            await session.execute(insert(tenders).values(**doc))
     return clean(doc)
 
 
 @api_router.put("/admin/jobs/{item_id}")
 async def admin_update_job(item_id: str, payload: JobIn):
-    existing = await db.jobs.find_one({"id": item_id})
+    async with async_session() as session:
+        result = await session.execute(select(jobs).where(jobs.c.id == item_id))
+        existing = result.fetchone()
     if not existing:
         raise HTTPException(status_code=404, detail="Job not found")
+    existing = row_to_dict(existing)
     data = payload.model_dump()
+    data["attachment"] = serialize_attachment(data.get("attachment"))
     data["updated_at"] = now_iso()
     data["expiry_date"] = compute_expiry(data.get("last_date"), existing["posted_date"])
     data["slug"] = build_slug(data["title"], data["city"], existing["bnb_id"])
-    await db.jobs.update_one({"id": item_id}, {"$set": data})
-    doc = await db.jobs.find_one({"id": item_id})
-    return clean(doc)
+    async with async_session() as session:
+        async with session.begin():
+            await session.execute(update(jobs).where(jobs.c.id == item_id).values(**data))
+        result = await session.execute(select(jobs).where(jobs.c.id == item_id))
+        doc = result.fetchone()
+    return clean(row_to_dict(doc))
 
 
 @api_router.put("/admin/tenders/{item_id}")
 async def admin_update_tender(item_id: str, payload: TenderIn):
-    existing = await db.tenders.find_one({"id": item_id})
+    async with async_session() as session:
+        result = await session.execute(select(tenders).where(tenders.c.id == item_id))
+        existing = result.fetchone()
     if not existing:
         raise HTTPException(status_code=404, detail="Tender not found")
+    existing = row_to_dict(existing)
     data = payload.model_dump()
+    data["attachment"] = serialize_attachment(data.get("attachment"))
     data["updated_at"] = now_iso()
     data["expiry_date"] = compute_expiry(data.get("last_date"), existing["posted_date"])
     data["slug"] = build_slug(data["title"], data["city"], existing["bnb_id"])
-    await db.tenders.update_one({"id": item_id}, {"$set": data})
-    doc = await db.tenders.find_one({"id": item_id})
-    return clean(doc)
+    async with async_session() as session:
+        async with session.begin():
+            await session.execute(update(tenders).where(tenders.c.id == item_id).values(**data))
+        result = await session.execute(select(tenders).where(tenders.c.id == item_id))
+        doc = result.fetchone()
+    return clean(row_to_dict(doc))
 
 
 class StatusUpdate(BaseModel):
@@ -603,31 +713,43 @@ class PrivateStatusUpdate(BaseModel):
 async def admin_job_status(item_id: str, payload: StatusUpdate):
     upd = {k: v for k, v in payload.model_dump().items() if v is not None}
     upd["updated_at"] = now_iso()
-    res = await db.jobs.update_one({"id": item_id}, {"$set": upd})
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return clean(await db.jobs.find_one({"id": item_id}))
+    async with async_session() as session:
+        async with session.begin():
+            result = await session.execute(update(jobs).where(jobs.c.id == item_id).values(**upd))
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Job not found")
+        result = await session.execute(select(jobs).where(jobs.c.id == item_id))
+        doc = result.fetchone()
+    return clean(row_to_dict(doc))
 
 
 @api_router.patch("/admin/tenders/{item_id}/status")
 async def admin_tender_status(item_id: str, payload: StatusUpdate):
     upd = {k: v for k, v in payload.model_dump().items() if v is not None}
     upd["updated_at"] = now_iso()
-    res = await db.tenders.update_one({"id": item_id}, {"$set": upd})
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Tender not found")
-    return clean(await db.tenders.find_one({"id": item_id}))
+    async with async_session() as session:
+        async with session.begin():
+            result = await session.execute(update(tenders).where(tenders.c.id == item_id).values(**upd))
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Tender not found")
+        result = await session.execute(select(tenders).where(tenders.c.id == item_id))
+        doc = result.fetchone()
+    return clean(row_to_dict(doc))
 
 
 @api_router.delete("/admin/jobs/{item_id}")
 async def admin_delete_job(item_id: str):
-    await db.jobs.delete_one({"id": item_id})
+    async with async_session() as session:
+        async with session.begin():
+            await session.execute(delete(jobs).where(jobs.c.id == item_id))
     return {"message": "deleted"}
 
 
 @api_router.delete("/admin/tenders/{item_id}")
 async def admin_delete_tender(item_id: str):
-    await db.tenders.delete_one({"id": item_id})
+    async with async_session() as session:
+        async with session.begin():
+            await session.execute(delete(tenders).where(tenders.c.id == item_id))
     return {"message": "deleted"}
 
 
@@ -710,6 +832,7 @@ class VendorIn(BaseModel):
 async def make_wr_doc(data: dict) -> dict:
     posted = now_iso()
     bnb_id = await next_bnb_id("WR")
+    data["attachment"] = serialize_attachment(data.get("attachment"))
     doc = {
         "id": str(uuid.uuid4()), "bnb_id": bnb_id, "posted_date": posted,
         "expiry_date": compute_expiry(data.get("required_by"), posted),
@@ -725,22 +848,42 @@ async def list_wr(search: Optional[str] = None, requirement_type: Optional[str] 
                   state: Optional[str] = None, city: Optional[str] = None,
                   include_expired: bool = False, limit: int = 100):
     await archive_expired("work_requirements")
-    base = {"status": {"$in": ["active", "archived"]}} if include_expired else {"status": "active"}
+    if include_expired:
+        conditions = [work_requirements.c.status.in_(["active", "archived"])]
+    else:
+        conditions = [work_requirements.c.status == "active"]
     if requirement_type and requirement_type != "all":
-        base["requirement_type"] = requirement_type
-    query = apply_filters(base, search, state, city, None)
-    docs = await db.work_requirements.find(query).sort("posted_date", -1).to_list(limit)
-    return [public_view(d) for d in docs]
+        conditions.append(work_requirements.c.requirement_type == requirement_type)
+    conditions = apply_sql_filters(work_requirements, conditions, search, state, city, None)
+    async with async_session() as session:
+        result = await session.execute(
+            select(work_requirements).where(and_(*conditions))
+            .order_by(work_requirements.c.posted_date.desc()).limit(limit)
+        )
+        rows = result.fetchall()
+    return [public_view(row_to_dict(r)) for r in rows]
 
 
 @api_router.get("/work-requirements/{slug}")
 async def get_wr(slug: str):
     await archive_expired("work_requirements")
     bnb_id = extract_bnb_id(slug) or slug.upper()
-    doc = await db.work_requirements.find_one({"bnb_id": bnb_id}) or await db.work_requirements.find_one({"slug": slug})
-    if not doc or doc.get("status") in ("draft", "pending", "rejected"):
+    async with async_session() as session:
+        result = await session.execute(
+            select(work_requirements).where(work_requirements.c.bnb_id == bnb_id)
+        )
+        doc = result.fetchone()
+        if not doc:
+            result = await session.execute(
+                select(work_requirements).where(work_requirements.c.slug == slug)
+            )
+            doc = result.fetchone()
+    if not doc:
         raise HTTPException(status_code=404, detail="Requirement not found")
-    return public_view(doc)
+    d = row_to_dict(doc)
+    if d.get("status") in ("draft", "pending", "rejected"):
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    return public_view(d)
 
 
 @api_router.post("/submissions/work-requirement")
@@ -750,7 +893,9 @@ async def submit_wr(payload: WorkRequirementSubmit):
         raise HTTPException(status_code=422, detail="Contact must be a 10-digit mobile number or a valid email")
     data.update({"source_type": "Company Submission", "origin": "Public Submission", "verification_status": "no_badge", "status": "pending"})
     doc = await make_wr_doc(data)
-    await db.work_requirements.insert_one(doc)
+    async with async_session() as session:
+        async with session.begin():
+            await session.execute(insert(work_requirements).values(**doc))
     await send_submission_email("work requirement", doc)
     return {"message": "submitted", "bnb_id": doc["bnb_id"]}
 
@@ -759,9 +904,13 @@ async def submit_wr(payload: WorkRequirementSubmit):
 @api_router.get("/admin/work-requirements")
 async def admin_list_wr(status: Optional[str] = None):
     await archive_expired("work_requirements")
-    query = {} if not status or status == "all" else {"status": status}
-    docs = await db.work_requirements.find(query).sort("created_at", -1).to_list(1000)
-    return [clean(d) for d in docs]
+    async with async_session() as session:
+        q = select(work_requirements)
+        if status and status != "all":
+            q = q.where(work_requirements.c.status == status)
+        result = await session.execute(q.order_by(work_requirements.c.created_at.desc()).limit(1000))
+        rows = result.fetchall()
+    return [clean(row_to_dict(r)) for r in rows]
 
 
 @api_router.post("/admin/work-requirements")
@@ -770,38 +919,56 @@ async def admin_create_wr(payload: WorkRequirementIn):
     if data.get("contact") and not valid_contact(data["contact"]):
         raise HTTPException(status_code=422, detail="Contact must be a 10-digit mobile number or a valid email")
     doc = await make_wr_doc(data)
-    await db.work_requirements.insert_one(doc)
+    async with async_session() as session:
+        async with session.begin():
+            await session.execute(insert(work_requirements).values(**doc))
     return clean(doc)
 
 
 @api_router.put("/admin/work-requirements/{item_id}")
 async def admin_update_wr(item_id: str, payload: WorkRequirementIn):
-    existing = await db.work_requirements.find_one({"id": item_id})
+    async with async_session() as session:
+        result = await session.execute(select(work_requirements).where(work_requirements.c.id == item_id))
+        existing = result.fetchone()
     if not existing:
         raise HTTPException(status_code=404, detail="Not found")
+    existing = row_to_dict(existing)
     data = payload.model_dump()
+    data["attachment"] = serialize_attachment(data.get("attachment"))
     if data.get("contact") and not valid_contact(data["contact"]):
         raise HTTPException(status_code=422, detail="Contact must be a 10-digit mobile number or a valid email")
     data["updated_at"] = now_iso()
     data["expiry_date"] = compute_expiry(data.get("required_by"), existing["posted_date"])
     data["slug"] = build_slug(data.get("title") or "requirement", data.get("city") or "", existing["bnb_id"])
-    await db.work_requirements.update_one({"id": item_id}, {"$set": data})
-    return clean(await db.work_requirements.find_one({"id": item_id}))
+    async with async_session() as session:
+        async with session.begin():
+            await session.execute(update(work_requirements).where(work_requirements.c.id == item_id).values(**data))
+        result = await session.execute(select(work_requirements).where(work_requirements.c.id == item_id))
+        doc = result.fetchone()
+    return clean(row_to_dict(doc))
 
 
 @api_router.patch("/admin/work-requirements/{item_id}/status")
 async def admin_wr_status(item_id: str, payload: StatusUpdate):
     upd = {k: v for k, v in payload.model_dump().items() if v is not None}
     upd["updated_at"] = now_iso()
-    res = await db.work_requirements.update_one({"id": item_id}, {"$set": upd})
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Not found")
-    return clean(await db.work_requirements.find_one({"id": item_id}))
+    async with async_session() as session:
+        async with session.begin():
+            result = await session.execute(
+                update(work_requirements).where(work_requirements.c.id == item_id).values(**upd)
+            )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Not found")
+        result = await session.execute(select(work_requirements).where(work_requirements.c.id == item_id))
+        doc = result.fetchone()
+    return clean(row_to_dict(doc))
 
 
 @api_router.delete("/admin/work-requirements/{item_id}")
 async def admin_delete_wr(item_id: str):
-    await db.work_requirements.delete_one({"id": item_id})
+    async with async_session() as session:
+        async with session.begin():
+            await session.execute(delete(work_requirements).where(work_requirements.c.id == item_id))
     return {"message": "deleted"}
 
 
@@ -811,30 +978,48 @@ async def submit_resume(payload: ResumeIn):
     data = payload.model_dump()
     if data.get("email") and not EMAIL_RE.match(data["email"]):
         raise HTTPException(status_code=422, detail="Invalid email")
+    data["resume"] = serialize_attachment(data.get("resume"))
     bnb_id = await next_bnb_id()
-    doc = {"id": str(uuid.uuid4()), "bnb_id": bnb_id, "record_type": "Resume", "origin": "Public Submission", "created_at": now_iso(), "status": "new", **data}
-    await db.resumes.insert_one(doc)
+    doc = {
+        "id": str(uuid.uuid4()), "bnb_id": bnb_id, "record_type": "Resume",
+        "origin": "Public Submission", "created_at": now_iso(), "status": "new", **data
+    }
+    async with async_session() as session:
+        async with session.begin():
+            await session.execute(insert(resumes).values(**doc))
     return {"message": "submitted", "bnb_id": bnb_id}
 
 
 @api_router.get("/admin/resumes")
 async def admin_list_resumes():
-    docs = await db.resumes.find({}).sort("created_at", -1).to_list(2000)
-    return [clean(d) for d in docs]
+    async with async_session() as session:
+        result = await session.execute(
+            select(resumes).order_by(resumes.c.created_at.desc()).limit(2000)
+        )
+        rows = result.fetchall()
+    return [clean(row_to_dict(r)) for r in rows]
 
 
 @api_router.patch("/admin/resumes/{item_id}/status")
 async def admin_resume_status(item_id: str, payload: PrivateStatusUpdate):
     upd = {"status": payload.status, "updated_at": now_iso()}
-    res = await db.resumes.update_one({"id": item_id}, {"$set": upd})
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Not found")
-    return clean(await db.resumes.find_one({"id": item_id}))
+    async with async_session() as session:
+        async with session.begin():
+            result = await session.execute(
+                update(resumes).where(resumes.c.id == item_id).values(**upd)
+            )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Not found")
+        result = await session.execute(select(resumes).where(resumes.c.id == item_id))
+        doc = result.fetchone()
+    return clean(row_to_dict(doc))
 
 
 @api_router.delete("/admin/resumes/{item_id}")
 async def admin_delete_resume(item_id: str):
-    await db.resumes.delete_one({"id": item_id})
+    async with async_session() as session:
+        async with session.begin():
+            await session.execute(delete(resumes).where(resumes.c.id == item_id))
     return {"message": "deleted"}
 
 
@@ -844,30 +1029,48 @@ async def submit_vendor(payload: VendorIn):
     data = payload.model_dump()
     if data.get("email") and not EMAIL_RE.match(data["email"]):
         raise HTTPException(status_code=422, detail="Invalid email")
+    data["brochure"] = serialize_attachment(data.get("brochure"))
     bnb_id = await next_bnb_id()
-    doc = {"id": str(uuid.uuid4()), "bnb_id": bnb_id, "record_type": "Vendor", "origin": "Public Submission", "created_at": now_iso(), "status": "new", **data}
-    await db.vendors.insert_one(doc)
+    doc = {
+        "id": str(uuid.uuid4()), "bnb_id": bnb_id, "record_type": "Vendor",
+        "origin": "Public Submission", "created_at": now_iso(), "status": "new", **data
+    }
+    async with async_session() as session:
+        async with session.begin():
+            await session.execute(insert(vendors).values(**doc))
     return {"message": "submitted", "bnb_id": bnb_id}
 
 
 @api_router.get("/admin/vendors")
 async def admin_list_vendors():
-    docs = await db.vendors.find({}).sort("created_at", -1).to_list(2000)
-    return [clean(d) for d in docs]
+    async with async_session() as session:
+        result = await session.execute(
+            select(vendors).order_by(vendors.c.created_at.desc()).limit(2000)
+        )
+        rows = result.fetchall()
+    return [clean(row_to_dict(r)) for r in rows]
 
 
 @api_router.patch("/admin/vendors/{item_id}/status")
 async def admin_vendor_status(item_id: str, payload: PrivateStatusUpdate):
     upd = {"status": payload.status, "updated_at": now_iso()}
-    res = await db.vendors.update_one({"id": item_id}, {"$set": upd})
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Not found")
-    return clean(await db.vendors.find_one({"id": item_id}))
+    async with async_session() as session:
+        async with session.begin():
+            result = await session.execute(
+                update(vendors).where(vendors.c.id == item_id).values(**upd)
+            )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Not found")
+        result = await session.execute(select(vendors).where(vendors.c.id == item_id))
+        doc = result.fetchone()
+    return clean(row_to_dict(doc))
 
 
 @api_router.delete("/admin/vendors/{item_id}")
 async def admin_delete_vendor(item_id: str):
-    await db.vendors.delete_one({"id": item_id})
+    async with async_session() as session:
+        async with session.begin():
+            await session.execute(delete(vendors).where(vendors.c.id == item_id))
     return {"message": "deleted"}
 
 
@@ -889,10 +1092,10 @@ class KnowledgeIn(BaseModel):
     linkedin: Optional[str] = None
     profile_picture: Optional[FileRef] = None
     author_contact: Optional[str] = None
-    source_type: SourceType = "BNB Research"
+    declaration: bool = False
+    source_type: Optional[str] = None
     verification_status: VerificationStatus = "no_badge"
     status: ListingStatus = "active"
-    declaration: bool = False
 
 
 class KnowledgeSubmit(BaseModel):
@@ -915,6 +1118,9 @@ class KnowledgeSubmit(BaseModel):
 async def make_knowledge_doc(data: dict) -> dict:
     posted = now_iso()
     bnb_id = await next_bnb_id()
+    data["cover_image"] = serialize_attachment(data.get("cover_image"))
+    data["attachment"] = serialize_attachment(data.get("attachment"))
+    data["profile_picture"] = serialize_attachment(data.get("profile_picture"))
     doc = {
         "id": str(uuid.uuid4()), "bnb_id": bnb_id, "posted_date": posted,
         "created_at": posted, "updated_at": posted, **data,
@@ -927,22 +1133,44 @@ async def make_knowledge_doc(data: dict) -> dict:
 
 @api_router.get("/knowledge")
 async def list_knowledge(search: Optional[str] = None, tag: Optional[str] = None, limit: int = 100):
-    query = {"status": "active"}
+    conditions = [knowledge.c.status == "active"]
     if tag and tag != "all":
-        query["tags"] = tag
+        # Search within JSON array for the tag
+        conditions.append(knowledge.c.tags.like(f'%"{tag}"%'))
     if search:
-        rx = {"$regex": re.escape(search), "$options": "i"}
-        query["$or"] = [{"title": rx}, {"summary": rx}, {"tags": rx}, {"author_name": rx}]
-    docs = await db.knowledge.find(query).sort("posted_date", -1).to_list(limit)
-    return [public_view(d) for d in docs]
+        like = f"%{search}%"
+        conditions.append(or_(
+            knowledge.c.title.ilike(like),
+            knowledge.c.summary.ilike(like),
+            knowledge.c.author_name.ilike(like),
+        ))
+    async with async_session() as session:
+        result = await session.execute(
+            select(knowledge).where(and_(*conditions))
+            .order_by(knowledge.c.posted_date.desc()).limit(limit)
+        )
+        rows = result.fetchall()
+    return [public_view(row_to_dict(r)) for r in rows]
 
 
 @api_router.get("/knowledge/{slug}")
 async def get_knowledge(slug: str):
-    doc = await db.knowledge.find_one({"slug": slug}) or await db.knowledge.find_one({"bnb_id": slug.upper()})
-    if not doc or doc.get("status") != "active":
+    async with async_session() as session:
+        result = await session.execute(
+            select(knowledge).where(knowledge.c.slug == slug)
+        )
+        doc = result.fetchone()
+        if not doc:
+            result = await session.execute(
+                select(knowledge).where(knowledge.c.bnb_id == slug.upper())
+            )
+            doc = result.fetchone()
+    if not doc:
         raise HTTPException(status_code=404, detail="Article not found")
-    return public_view(doc)
+    d = row_to_dict(doc)
+    if d.get("status") != "active":
+        raise HTTPException(status_code=404, detail="Article not found")
+    return public_view(d)
 
 
 @api_router.post("/submissions/knowledge")
@@ -954,50 +1182,76 @@ async def submit_knowledge(payload: KnowledgeSubmit):
         raise HTTPException(status_code=422, detail="Please add some content before submitting")
     data.update({"source_type": "Organization Submission", "origin": "Public Submission", "verification_status": "no_badge", "status": "pending"})
     doc = await make_knowledge_doc(data)
-    await db.knowledge.insert_one(doc)
+    async with async_session() as session:
+        async with session.begin():
+            await session.execute(insert(knowledge).values(**doc))
     await send_submission_email("knowledge article", doc)
     return {"message": "submitted", "bnb_id": doc["bnb_id"]}
 
 
 @api_router.get("/admin/knowledge")
 async def admin_list_knowledge(status: Optional[str] = None):
-    query = {} if not status or status == "all" else {"status": status}
-    docs = await db.knowledge.find(query).sort("created_at", -1).to_list(1000)
-    return [clean(d) for d in docs]
+    async with async_session() as session:
+        q = select(knowledge)
+        if status and status != "all":
+            q = q.where(knowledge.c.status == status)
+        result = await session.execute(q.order_by(knowledge.c.created_at.desc()).limit(1000))
+        rows = result.fetchall()
+    return [clean(row_to_dict(r)) for r in rows]
 
 
 @api_router.post("/admin/knowledge")
 async def admin_create_knowledge(payload: KnowledgeIn):
     doc = await make_knowledge_doc(payload.model_dump())
-    await db.knowledge.insert_one(doc)
+    async with async_session() as session:
+        async with session.begin():
+            await session.execute(insert(knowledge).values(**doc))
     return clean(doc)
 
 
 @api_router.put("/admin/knowledge/{item_id}")
 async def admin_update_knowledge(item_id: str, payload: KnowledgeIn):
-    existing = await db.knowledge.find_one({"id": item_id})
+    async with async_session() as session:
+        result = await session.execute(select(knowledge).where(knowledge.c.id == item_id))
+        existing = result.fetchone()
     if not existing:
         raise HTTPException(status_code=404, detail="Not found")
+    existing = row_to_dict(existing)
     data = payload.model_dump()
+    data["cover_image"] = serialize_attachment(data.get("cover_image"))
+    data["attachment"] = serialize_attachment(data.get("attachment"))
+    data["profile_picture"] = serialize_attachment(data.get("profile_picture"))
     data["updated_at"] = now_iso()
     data["slug"] = f'{slugify(data.get("title") or "article")}-{existing["bnb_id"].lower()}'
-    await db.knowledge.update_one({"id": item_id}, {"$set": data})
-    return clean(await db.knowledge.find_one({"id": item_id}))
+    async with async_session() as session:
+        async with session.begin():
+            await session.execute(update(knowledge).where(knowledge.c.id == item_id).values(**data))
+        result = await session.execute(select(knowledge).where(knowledge.c.id == item_id))
+        doc = result.fetchone()
+    return clean(row_to_dict(doc))
 
 
 @api_router.patch("/admin/knowledge/{item_id}/status")
 async def admin_knowledge_status(item_id: str, payload: StatusUpdate):
     upd = {k: v for k, v in payload.model_dump().items() if v is not None}
     upd["updated_at"] = now_iso()
-    res = await db.knowledge.update_one({"id": item_id}, {"$set": upd})
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Not found")
-    return clean(await db.knowledge.find_one({"id": item_id}))
+    async with async_session() as session:
+        async with session.begin():
+            result = await session.execute(
+                update(knowledge).where(knowledge.c.id == item_id).values(**upd)
+            )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Not found")
+        result = await session.execute(select(knowledge).where(knowledge.c.id == item_id))
+        doc = result.fetchone()
+    return clean(row_to_dict(doc))
 
 
 @api_router.delete("/admin/knowledge/{item_id}")
 async def admin_delete_knowledge(item_id: str):
-    await db.knowledge.delete_one({"id": item_id})
+    async with async_session() as session:
+        async with session.begin():
+            await session.execute(delete(knowledge).where(knowledge.c.id == item_id))
     return {"message": "deleted"}
 
 
@@ -1006,12 +1260,16 @@ async def admin_delete_knowledge(item_id: str):
 async def admin_stats():
     for c in ["jobs", "tenders", "work_requirements"]:
         await archive_expired(c)
-    public_mods = {"jobs": "jobs", "tenders": "tenders",
-                   "work-requirements": "work_requirements", "knowledge": "knowledge"}
-    private_mods = {"resumes": "resumes", "vendors": "vendors"}
+    public_mods = {"jobs": jobs, "tenders": tenders,
+                   "work-requirements": work_requirements, "knowledge": knowledge}
+    private_mods = {"resumes": resumes, "vendors": vendors}
     out = {"public": {}, "private": {}}
-    for key, coll in public_mods.items():
-        docs = await db[coll].find({}, {"status": 1, "origin": 1, "source_type": 1, "_id": 0}).to_list(100000)
+    for key, table in public_mods.items():
+        async with async_session() as session:
+            result = await session.execute(
+                select(table.c.status, table.c.origin, table.c.source_type)
+            )
+            docs = [row_to_dict(r) for r in result.fetchall()]
         def origin_of(d):
             return d.get("origin") or ("BNB Created" if d.get("source_type") == "BNB Research" else "Public Submission")
         out["public"][key] = {
@@ -1022,8 +1280,10 @@ async def admin_stats():
             "bnb_created": sum(1 for d in docs if origin_of(d) == "BNB Created"),
             "public_submissions": sum(1 for d in docs if origin_of(d) == "Public Submission"),
         }
-    for key, coll in private_mods.items():
-        docs = await db[coll].find({}, {"status": 1, "_id": 0}).to_list(100000)
+    for key, table in private_mods.items():
+        async with async_session() as session:
+            result = await session.execute(select(table.c.status))
+            docs = [row_to_dict(r) for r in result.fetchall()]
         out["private"][key] = {
             "total": len(docs),
             "new_pending": sum(1 for d in docs if d.get("status") in ("new", "pending")),
@@ -1054,8 +1314,8 @@ EXPORT_COLUMNS = {
     "knowledge": ["bnb_id", "record_type", "origin", "content_type", "title", "summary", "tags", "author_name", "author_info",
                   "linkedin", "author_contact", "source_url", "source_type", "verification_status", "status", "posted_date"],
 }
-EXPORT_COLL = {"jobs": "jobs", "tenders": "tenders", "work-requirements": "work_requirements",
-               "resumes": "resumes", "vendors": "vendors", "knowledge": "knowledge"}
+EXPORT_TABLE = {"jobs": jobs, "tenders": tenders, "work-requirements": work_requirements,
+               "resumes": resumes, "vendors": vendors, "knowledge": knowledge}
 
 
 def _cell(v):
@@ -1068,14 +1328,20 @@ def _cell(v):
 
 @api_router.get("/admin/export/{module}")
 async def export_module(module: str, status: Optional[str] = None, state: Optional[str] = None):
-    if module not in EXPORT_COLL:
+    if module not in EXPORT_TABLE:
         raise HTTPException(status_code=404, detail="Unknown module")
-    query = {}
+    table = EXPORT_TABLE[module]
+    conditions = []
     if status and status != "all":
-        query["status"] = status
-    if state and state != "all":
-        query["state"] = state
-    docs = await db[EXPORT_COLL[module]].find(query).sort("created_at", -1).to_list(5000)
+        conditions.append(table.c.status == status)
+    if state and state != "all" and hasattr(table.c, "state"):
+        conditions.append(table.c.state == state)
+    async with async_session() as session:
+        q = select(table)
+        if conditions:
+            q = q.where(and_(*conditions))
+        result = await session.execute(q.order_by(table.c.created_at.desc()).limit(5000))
+        docs = [row_to_dict(r) for r in result.fetchall()]
     cols = EXPORT_COLUMNS[module]
     wb = Workbook()
     ws = wb.active
@@ -1100,14 +1366,30 @@ async def sitemap():
     base = SITE_URL
     urls = [f"{base}/", f"{base}/jobs", f"{base}/tenders", f"{base}/submit",
             f"{base}/privacy", f"{base}/disclaimer", f"{base}/terms"]
-    jobs = await db.jobs.find({"status": "active"}, {"slug": 1}).to_list(1000)
-    tenders = await db.tenders.find({"status": {"$in": ["active", "archived"]}}, {"slug": 1}).to_list(1000)
-    wrs = await db.work_requirements.find({"status": {"$in": ["active", "archived"]}}, {"slug": 1}).to_list(1000)
-    urls += [f"{base}/jobs/{j['slug']}" for j in jobs]
-    urls += [f"{base}/tenders/{t['slug']}" for t in tenders]
-    knos = await db.knowledge.find({"status": "active"}, {"slug": 1}).to_list(1000)
-    urls += [f"{base}/work-requirements/{w['slug']}" for w in wrs]
-    urls += [f"{base}/knowledge-hub/{k['slug']}" for k in knos]
+
+    async with async_session() as session:
+        result = await session.execute(select(jobs.c.slug).where(jobs.c.status == "active"))
+        job_slugs = [r.slug for r in result.fetchall()]
+
+        result = await session.execute(
+            select(tenders.c.slug).where(tenders.c.status.in_(["active", "archived"]))
+        )
+        tender_slugs = [r.slug for r in result.fetchall()]
+
+        result = await session.execute(
+            select(work_requirements.c.slug).where(work_requirements.c.status.in_(["active", "archived"]))
+        )
+        wr_slugs = [r.slug for r in result.fetchall()]
+
+        result = await session.execute(
+            select(knowledge.c.slug).where(knowledge.c.status == "active")
+        )
+        kno_slugs = [r.slug for r in result.fetchall()]
+
+    urls += [f"{base}/jobs/{s}" for s in job_slugs]
+    urls += [f"{base}/tenders/{s}" for s in tender_slugs]
+    urls += [f"{base}/work-requirements/{s}" for s in wr_slugs]
+    urls += [f"{base}/knowledge-hub/{s}" for s in kno_slugs]
     urls.append(f"{base}/work-requirements")
     urls.append(f"{base}/knowledge-hub")
     items = "".join(f"<url><loc>{u}</loc></url>" for u in urls)
@@ -1148,6 +1430,10 @@ logger = logging.getLogger(__name__)
 
 @app.on_event("startup")
 async def startup():
+    # Initialize database tables
+    await init_db()
+    logger.info("MySQL database initialized")
+    # Initialize object storage
     try:
         init_storage()
         logger.info("Storage initialized")
@@ -1156,7 +1442,5 @@ async def startup():
 
 
 @app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
-def shutdown_db_client():
-    client.close()
+async def shutdown():
+    await dispose_db()
