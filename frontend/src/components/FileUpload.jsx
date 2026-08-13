@@ -1,6 +1,8 @@
+"use client";
+
 import { useState } from "react";
 import { Upload, FileText, X, Loader2 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api } from "../lib/api";
 import { toast } from "sonner";
 
 export const FileUpload = ({ value, onChange, label = "Attachment", testid = "file-upload" }) => {

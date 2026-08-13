@@ -1,4 +1,6 @@
-import { Label } from "@/components/ui/label";
+"use client";
+
+import { Label } from "./ui/label";
 
 export const Field = ({ label, hint, required, children }) => (
   <div>

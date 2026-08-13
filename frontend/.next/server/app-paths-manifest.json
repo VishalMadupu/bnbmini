@@ -1,0 +1,7 @@
+{
+  "/page": "app/page.js",
+  "/jobs/page": "app/jobs/page.js",
+  "/knowledge-hub/page": "app/knowledge-hub/page.js",
+  "/tenders/page": "app/tenders/page.js",
+  "/work-requirements/page": "app/work-requirements/page.js"
+}

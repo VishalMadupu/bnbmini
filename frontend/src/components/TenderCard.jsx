@@ -1,11 +1,13 @@
-import { Link } from "react-router-dom";
+"use client";
+
+import Link from 'next/link';
 import { MapPin, CalendarClock, ArrowRight, IndianRupee, Hash } from "lucide-react";
-import { VerifiedBadge } from "@/components/VerifiedBadge";
-import { formatDate } from "@/lib/format";
+import { VerifiedBadge } from "./VerifiedBadge";
+import { formatDate } from "../lib/format";
 
 export const TenderCard = ({ tender }) => (
   <Link
-    to={`/tenders/${tender.slug}`}
+    href={`/tenders/${tender.slug}`}
     data-testid={`tender-card-${tender.bnb_id}`}
     className={`group flex flex-col rounded-lg border bg-white p-6 transition-transform transition-shadow duration-200 hover:-translate-y-1 hover:shadow-md ${
       tender.is_expired ? "border-slate-200 opacity-90" : "border-slate-200"

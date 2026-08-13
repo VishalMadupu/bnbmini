@@ -1,9 +1,12 @@
+"use client";
+
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Menu } from "lucide-react";
-import { BrandLogo } from "@/components/BrandLogo";
-import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger, SheetClose, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { BrandLogo } from "./BrandLogo";
+import { Button } from "./ui/button";
+import { Sheet, SheetContent, SheetTrigger, SheetClose, SheetTitle, SheetDescription } from "./ui/sheet";
 
 const links = [
   { to: "/jobs", label: "Jobs", id: "jobs" },
@@ -13,13 +16,13 @@ const links = [
 ];
 
 export const Header = () => {
-  const { pathname } = useLocation();
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        <Link to="/" data-testid="logo-link" className="flex items-center gap-2">
+        <Link href="/" data-testid="logo-link" className="flex items-center gap-2">
           <BrandLogo className="h-9 w-9" />
           <span className="font-display text-lg font-bold tracking-tight text-brand-900">
             BitsNdBricks
@@ -31,7 +34,7 @@ export const Header = () => {
           {links.map((l) => (
             <Link
               key={l.to}
-              to={l.to}
+              href={l.to}
               data-testid={`nav-${l.id}`}
               className={`rounded-md px-3 py-2 text-sm font-medium transition-colors hover:text-brand-600 ${
                 pathname.startsWith(l.to) ? "text-brand-600" : "text-slate-700"
@@ -40,7 +43,7 @@ export const Header = () => {
               {l.label}
             </Link>
           ))}
-          <Link to="/submit" data-testid="nav-submit">
+          <Link href="/submit" data-testid="nav-submit">
             <Button size="sm" className="ml-1 bg-brand-600 text-white hover:bg-brand-700 active:scale-95">
               Submit Requirement
             </Button>
@@ -62,7 +65,7 @@ export const Header = () => {
                 {links.map((l) => (
                   <SheetClose asChild key={l.to}>
                     <Link
-                      to={l.to}
+                      href={l.to}
                       data-testid={`mobile-nav-${l.id}`}
                       className={`rounded-md px-3 py-3 text-base font-medium ${
                         pathname.startsWith(l.to) ? "bg-brand-50 text-brand-600" : "text-slate-700 hover:bg-slate-100"
@@ -73,7 +76,7 @@ export const Header = () => {
                   </SheetClose>
                 ))}
                 <SheetClose asChild>
-                  <Link to="/submit" data-testid="mobile-nav-submit" className="mt-3">
+                  <Link href="/submit" data-testid="mobile-nav-submit" className="mt-3">
                     <Button className="w-full bg-brand-600 py-6 text-base text-white hover:bg-brand-700">
                       Submit Requirement
                     </Button>

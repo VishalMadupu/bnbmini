@@ -1,3 +1,5 @@
+"use client";
+
 import { useId } from "react";
 
 export const BrandLogo = ({ className = "", color = "#2a4599", mortar = "#ffffff" }) => {

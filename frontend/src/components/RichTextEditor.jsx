@@ -1,3 +1,5 @@
+"use client";
+
 import { useRef } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -8,7 +10,7 @@ import {
   List, ListOrdered, Quote, Link2, Image as ImageIcon, Table as TableIcon,
   Undo2, Redo2, Loader2,
 } from "lucide-react";
-import { api, fileUrl } from "@/lib/api";
+import { api, fileUrl } from "../lib/api";
 import { toast } from "sonner";
 import { useState } from "react";
 

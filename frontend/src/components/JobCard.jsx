@@ -1,11 +1,13 @@
-import { Link } from "react-router-dom";
+"use client";
+
+import Link from 'next/link';
 import { MapPin, CalendarClock, ArrowRight } from "lucide-react";
-import { VerifiedBadge } from "@/components/VerifiedBadge";
-import { formatDate } from "@/lib/format";
+import { VerifiedBadge } from "./VerifiedBadge";
+import { formatDate } from "../lib/format";
 
 export const JobCard = ({ job }) => (
   <Link
-    to={`/jobs/${job.slug}`}
+    href={`/jobs/${job.slug}`}
     data-testid={`job-card-${job.bnb_id}`}
     className="group flex flex-col rounded-lg border border-slate-200 bg-white p-6 transition-transform transition-shadow duration-200 hover:-translate-y-1 hover:shadow-md"
   >

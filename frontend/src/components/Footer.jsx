@@ -1,5 +1,7 @@
-import { Link } from "react-router-dom";
-import { BrandLogo } from "@/components/BrandLogo";
+"use client";
+
+import Link from 'next/link';
+import { BrandLogo } from "./BrandLogo";
 
 export const Footer = () => (
   <footer className="mt-20 border-t border-slate-200 bg-white">
@@ -20,17 +22,17 @@ export const Footer = () => (
           <div>
             <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Explore</h4>
             <ul className="mt-3 space-y-2 text-sm">
-              <li><Link to="/jobs" className="text-slate-600 hover:text-brand-600">Jobs</Link></li>
-              <li><Link to="/tenders" className="text-slate-600 hover:text-brand-600">Tenders</Link></li>
-              <li><Link to="/submit" className="text-slate-600 hover:text-brand-600">Submit Requirement</Link></li>
+              <li><Link href="/jobs" className="text-slate-600 hover:text-brand-600">Jobs</Link></li>
+              <li><Link href="/tenders" className="text-slate-600 hover:text-brand-600">Tenders</Link></li>
+              <li><Link href="/submit" className="text-slate-600 hover:text-brand-600">Submit Requirement</Link></li>
             </ul>
           </div>
           <div>
             <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Legal</h4>
             <ul className="mt-3 space-y-2 text-sm">
-              <li><Link to="/privacy" data-testid="footer-privacy" className="text-slate-600 hover:text-brand-600">Privacy Policy</Link></li>
-              <li><Link to="/disclaimer" data-testid="footer-disclaimer" className="text-slate-600 hover:text-brand-600">Disclaimer</Link></li>
-              <li><Link to="/terms" data-testid="footer-terms" className="text-slate-600 hover:text-brand-600">Terms of Use</Link></li>
+              <li><Link href="/privacy" data-testid="footer-privacy" className="text-slate-600 hover:text-brand-600">Privacy Policy</Link></li>
+              <li><Link href="/disclaimer" data-testid="footer-disclaimer" className="text-slate-600 hover:text-brand-600">Disclaimer</Link></li>
+              <li><Link href="/terms" data-testid="footer-terms" className="text-slate-600 hover:text-brand-600">Terms of Use</Link></li>
             </ul>
           </div>
         </div>

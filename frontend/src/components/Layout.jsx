@@ -1,5 +1,7 @@
-import { Header } from "@/components/Header";
-import { Footer } from "@/components/Footer";
+"use client";
+
+import { Header } from "./Header";
+import { Footer } from "./Footer";
 
 export const Layout = ({ children }) => (
   <div className="flex min-h-screen flex-col bg-slate-50">

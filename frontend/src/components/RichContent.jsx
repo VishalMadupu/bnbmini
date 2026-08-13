@@ -1,3 +1,5 @@
+"use client";
+
 export const RichContent = ({ html, className = "" }) => (
   <div
     className={`bnb-prose ${className}`}

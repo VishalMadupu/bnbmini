@@ -1,11 +1,13 @@
-import { Link } from "react-router-dom";
+"use client";
+
+import Link from 'next/link';
 import { ArrowRight, Hash, CalendarDays, User } from "lucide-react";
-import { formatDate } from "@/lib/format";
-import { fileUrl } from "@/lib/api";
+import { formatDate } from "../lib/format";
+import { fileUrl } from "../lib/api";
 
 export const KnowledgeCard = ({ item }) => (
   <Link
-    to={`/knowledge-hub/${item.slug}`}
+    href={`/knowledge-hub/${item.slug}`}
     data-testid={`knowledge-card-${item.bnb_id}`}
     className="group flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white transition-transform transition-shadow duration-200 hover:-translate-y-1 hover:shadow-md"
   >
